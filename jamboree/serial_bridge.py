@@ -2,6 +2,7 @@
 """115200‑baud helper with verbose debug logging."""
 import serial, time, logging
 from typing import Dict
+from .commands import get_button_codes, get_button_number
 
 _PORTS: Dict[str, serial.Serial] = {}
 BAUDRATE = 115200
@@ -59,4 +60,31 @@ def send_rf(port: str, remote_num: str, button_id: str, delay_ms: int) -> str:
 
     # small pause so GUI “tap” commands don’t outrun the MCU
     time.sleep((delay_ms + 50) / 1000.0)
+    return line.strip()
+
+
+# --------------------------------------------------------------------- Quick-DART helper
+def send_quick_dart(port: str, remote_num: str, button_id: str, action: str) -> str:
+    """
+    Send a quick-DART command ('down' or 'up') to the Arduino:
+      <remoteNum> <buttonNumber> <action>
+    where action is literally "down" or "up".
+    """
+    button_number = get_button_number(button_id)
+    if not button_number:
+        raise ValueError(f"Unknown button_id '{button_id}'")
+
+    line = f"{remote_num} {button_number} {action}\n"
+    ser = _open(port)
+
+    # write the quick-DART line
+    ser.write(line.encode())
+    ser.flush()
+    logging.debug("→ %s | %s", port, line.strip())
+
+    # read back one line of echo (if any)
+    echo = ser.readline()
+    if echo:
+        logging.debug("← %s | %s", port, echo.decode(errors='replace').rstrip())
+
     return line.strip()

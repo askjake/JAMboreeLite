@@ -4,7 +4,7 @@ import logging, time
 from datetime import datetime, timezone
 from typing import Dict
 
-from .serial_bridge import send_rf
+from .serial_bridge import send_rf, send_quick_dart
 from .sgs_bridge import send_sgs
 from .stb_store import store
 
@@ -37,13 +37,13 @@ class Controller:
             raise ValueError(f"STB '{stb_name}' not found in base.txt")
         port, remote = stb["com_port"], stb["remote"]
         if action in ("down", "up"):
-            # quickDART –  just forward the literal action
-            line = f"{remote} {button_id} {action}\n"
+            # Quick-DART: two discrete events
+            sent = send_quick_dart(port, remote, button_id, action)
         else:
-            # normal DART – action == hold‑time‑ms string
-            line = f"{remote} {button_id} {int(action)}\n"
-        _ = send_rf(port, remote, button_id, 0)  # uses KEY_CMD/RELEASE internally
-        return {"dart_line": line.strip(), "ts": datetime.now(timezone.utc).isoformat()}
+            # Legacy (timed) DART: single hold with ms
+            sent = send_rf(port, remote, button_id, int(action))
+
+        return {"dart_line": sent, "ts": datetime.now(timezone.utc).isoformat()}
 
     # ------------------------------------------------------ UNPAIR
     def unpair(self, stb_name: str):
@@ -55,7 +55,7 @@ class Controller:
         remote = stb["remote"]
 
         # 1 · SAT hold 3 s
-        self.handle_auto_remote(remote, stb_name, "sat", 3000)
+        self.handle_auto_remote(remote, stb_name, "sat", 3010)
 
         # 2 · DVR & Guide quick‑DART down
         time.sleep(0.1)
