@@ -1,0 +1,110 @@
+<!-- --- static/settops.html --- -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <title id="host-name">Settops</title>
+  <style>
+    body{font-family:Arial,Helvetica,sans-serif;padding:20px}
+    table{width:100%;border-collapse:collapse;margin-bottom:20px}
+    th,td{padding:6px;border-bottom:1px solid #ddd;text-align:left}
+    th{background:#f2f2f2;cursor:pointer}
+    tr:nth-child(even){background:#fafafa}
+    button{padding:4px 8px;border:none;border-radius:4px;margin:2px;cursor:pointer;color:#fff;background:#4caf50;font-size:.8rem}
+    button:hover{background:#45a049}
+    .save-btn{background:#008cba} .save-btn:hover{background:#007bb5}
+  </style>
+</head>
+<body>
+  <nav>
+    <button onclick="location.href='/'">JAMboRemote</button>
+    <button onclick="location.href='/apps'">dayJAM</button>
+    <button onclick="location.href='http://10.74.139.230:9090/dpweb/'">DPWeb</button>
+  </nav>
+  <h1>STB Manager</h1>
+
+  <table id="stb-table">
+    <thead>
+      <tr>
+        <th onclick="sortTable(0)">Alias</th>
+        <th onclick="sortTable(1)">STB</th>
+        <th onclick="sortTable(2)">IP</th>
+        <th onclick="sortTable(3)">Protocol</th>
+        <th onclick="sortTable(4)">Remote</th>
+        <th onclick="sortTable(5)">Model</th>
+        <th onclick="sortTable(6)">COM</th>
+        <th onclick="sortTable(7)">SW</th>
+        <th onclick="sortTable(8)">Apps</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="stb-table-body"></tbody>
+  </table>
+  <button onclick="addRow()">Add Row</button>
+  <button class="save-btn" onclick="saveChanges()">Save</button>
+
+<script>
+const API_LIST = '/get-stb-list';
+const API_SAVE = '/save-stb-list';
+let stbData = {};
+
+window.addEventListener('DOMContentLoaded',()=>{
+  fetch('/hostname').then(r=>r.json()).then(d=>document.getElementById('host-name').textContent=d.hostname);
+  fetch(API_LIST).then(r=>r.json()).then(d=>{stbData=d.stbs;populateTable();});
+});
+
+function populateTable(){
+  const tbody=document.getElementById('stb-table-body');
+  tbody.innerHTML='';
+  Object.entries(stbData).forEach(([alias,det])=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td contenteditable data-k='alias'>${alias}</td>
+      <td contenteditable data-k='stb'>${det.stb||''}</td>
+      <td contenteditable data-k='ip'>${det.ip||''}</td>
+      <td contenteditable data-k='protocol'>${det.protocol||''}</td>
+      <td contenteditable data-k='remote'>${det.remote||''}</td>
+      <td contenteditable data-k='model'>${det.model||''}</td>
+      <td contenteditable data-k='com_port'>${det.com_port||''}</td>
+      <td contenteditable data-k='sw_ver'>${det.sw_ver||''}</td>
+      <td contenteditable data-k='apps'>${det.apps||''}</td>
+      <td><button onclick="delRow(this)">Delete</button></td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function addRow(){
+  const tr=document.createElement('tr');
+  tr.innerHTML=`<td contenteditable data-k='alias'></td>
+    <td contenteditable data-k='stb'></td><td contenteditable data-k='ip'></td>
+    <td contenteditable data-k='protocol'></td><td contenteditable data-k='remote'></td>
+    <td contenteditable data-k='model'></td><td contenteditable data-k='com_port'></td>
+    <td contenteditable data-k='sw_ver'></td><td contenteditable data-k='apps'></td>
+    <td><button onclick="delRow(this)">Delete</button></td>`;
+  document.getElementById('stb-table-body').appendChild(tr);
+}
+function delRow(btn){btn.closest('tr').remove();}
+
+function saveChanges(){
+  const rows=document.querySelectorAll('#stb-table-body tr');
+  const obj={};// collect
+  rows.forEach(r=>{
+    const d={};r.querySelectorAll('[data-k]').forEach(cell=>d[cell.dataset.k]=cell.innerText.trim());
+    if(d.alias)obj[d.alias]=d;
+  });
+  fetch(API_SAVE,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({stbs:obj})})
+    .then(r=>r.json()).then(j=>alert(j.success?'Saved':'Error'));
+}
+
+// simple sort
+let sortAsc={};
+function sortTable(idx){
+  const tbody=document.getElementById('stb-table-body');
+  const rows=Array.from(tbody.rows);
+  sortAsc[idx]=!sortAsc[idx];
+  rows.sort((a,b)=>a.cells[idx].innerText.localeCompare(b.cells[idx].innerText)*(sortAsc[idx]?1:-1));
+  rows.forEach(r=>tbody.appendChild(r));
+}
+</script>
+</body>
+</html>

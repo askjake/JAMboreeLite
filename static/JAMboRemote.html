@@ -1,0 +1,162 @@
+<!-- --- static/JAMboRemote.html --- -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title id="host-name">JAMboRemote</title>
+    <style>
+        /* layout */
+        body {margin:0;display:flex;justify-content:center;align-items:center;height:100vh;background:#f0f0f0;font-family:Arial,Helvetica,sans-serif}
+        .remote-container{position:relative;width:20vw;aspect-ratio:0.39;/* image ratio */background:url('static/54.3.jpg') center/cover no-repeat;border:2px solid transparent;overflow:hidden}
+        button{cursor:pointer;border:none;padding:4px 8px;margin:2px;border-radius:4px;background:#4caf50;color:#fff;font-size:.8rem}
+        button:hover{background:#45a049}
+        .button{position:absolute;background:rgba(255,255,255,.03);border:2px solid transparent;border-radius:5px;transition:.3s}
+        .button:hover{background:rgba(255,255,255,.2);border-color:#007bff}
+        .button.pressed{background:rgba(255,255,255,.4);border-color:#0056b3}
+
+        /* Adjusted button positions */
+		#sat { top: 10%; left: 2%; width: 5%; height: 4.54%; }
+		#tv { top: 16%; left: 2%; width: 5%; height: 4.54%; }
+		#aux { top: 22%; left: 2%; width: 5%; height: 4.54%; }
+		#input { top: 28%; left: 2%; width: 5%; height: 4.54%; }
+
+        #Power { top: 5.68%; left: 13.33%; width: 20%; height: 4.54%; }
+        #allUp { top: 5.68%; left: 36.67%; width: 20%; height: 4.54%; }
+        #reset { top: 5.68%; left: 66.67%; width: 20%; height: 4.54%; }
+
+        #DVR { top: 11.36%; left: 8.33%; width: 25%; height: 4.54%; }
+        #Home { top: 11.36%; left: 36.67%; width: 25%; height: 4.54%; }
+        #Guide { top: 11.36%; left: 66.67%; width: 25%; height: 4.54%; }
+
+        #Options { top: 17.61%; left: 8.33%; width: 25%; height: 6.25%; }
+        #Up { top: 17.61%; left: 36.67%; width: 25%; height: 6.25%; }
+        #Voice { top: 17.61%; left: 66.67%; width: 25%; height: 6.25%; }
+
+        #Left { top: 25%; left: 8.33%; width: 25%; height: 7.95%; }
+        #Enter { top: 25%; left: 36.67%; width: 25%; height: 7.95%; }
+        #Right { top: 25%; left: 66.67%; width: 25%; height: 7.95%; }
+
+        #Back { top: 34.09%; left: 8.33%; width: 25%; height: 6.25%; }
+        #Down { top: 34.09%; left: 36.67%; width: 25%; height: 6.25%; }
+        #Info { top: 34.09%; left: 66.67%; width: 25%; height: 6.25%; }
+
+        #RWD { top: 42.61%; left: 11.67%; width: 23.33%; height: 5.11%; }
+        #Play { top: 42.61%; left: 36.67%; width: 25%; height: 5.11%; }
+        #FWD { top: 42.61%; left: 63.33%; width: 21.67%; height: 5.11%; }
+
+        #VolUp { top: 50%; left: 15%; width: 21.67%; height: 5.68%; }
+        #Recall { top: 51.7%; left: 39.33%; width: 20%; height: 5.11%; }
+        #ChUp { top: 50%; left: 61.67%; width: 20%; height: 5.68%; }
+
+        #VolDown { top: 56.82%; left: 16.67%; width: 20%; height: 5.68%; }
+        #Mute { top: 57.39%; left: 39.33%; width: 20%; height: 5.11%; }
+        #ChDown { top: 56.82%; left: 61.67%; width: 20%; height: 5.68%; }
+
+        #one { top: 64.2%; left: 18.33%; width: 18.33%; height: 3.98%; }
+        #two { top: 64.2%; left: 39.33%; width: 18.33%; height: 3.98%; }
+        #three { top: 64.2%; left: 60%; width: 20%; height: 3.98%; }
+
+        #four { top: 69.55%; left: 18.33%; width: 18.33%; height: 3.98%; }
+        #five { top: 69.55%; left: 39.33%; width: 18.33%; height: 3.98%; }
+        #six { top: 69.55%; left: 60%; width: 20%; height: 3.98%; }
+
+        #seven { top: 75%; left: 18.33%; width: 18.33%; height: 3.98%; }
+        #eight { top: 75%; left: 39.33%; width: 18.33%; height: 3.98%; }
+        #nine { top: 75%; left: 60%; width: 20%; height: 3.98%; }
+
+        #diamond { top: 80.68%; left: 18.33%; width: 18.33%; height: 3.98%; }
+        #zero { top: 80.68%; left: 39.33%; width: 18.33%; height: 3.98%; }
+        #ddiamond { top: 80.68%; left: 59.33%; width: 20%; height: 3.98%; }
+
+
+
+        .toggle-container input {
+            margin-right: 10px;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="remote-container">
+        <button onclick="location.href='/settops'">Settops</button>
+        <button onclick="location.href='/apps'">dayJAM</button>
+        <button onclick="location.href='http://10.74.139.230:9090/dpweb/'">DPWeb</button>
+        <button id="unpairRemote">Unpair Remote</button>
+        <!-- invisible hit‑areas -->
+        <div id="sat" class="button"></div>
+        <div id="tv" class="button"></div>
+        <div id="aux" class="button"></div>
+        <div id="input" class="button"></div>
+        <div id="Power" class="button"></div>
+        <div id="allUp" class="button"></div>
+        <div id="reset" class="button"></div>
+        <div id="DVR" class="button"></div>
+        <div id="Home" class="button"></div>
+        <div id="Guide" class="button"></div>
+        <div id="Options" class="button"></div>
+        <div id="Up" class="button"></div>
+        <div id="Voice" class="button"></div>
+        <div id="Left" class="button"></div>
+        <div id="Enter" class="button"></div>
+        <div id="Right" class="button"></div>
+        <div id="Back" class="button"></div>
+        <div id="Down" class="button"></div>
+        <div id="Info" class="button"></div>
+        <div id="RWD" class="button"></div>
+        <div id="Play" class="button"></div>
+        <div id="FWD" class="button"></div>
+        <div id="VolUp" class="button"></div>
+        <div id="Recall" class="button"></div>
+        <div id="ChUp" class="button"></div>
+        <div id="VolDown" class="button"></div>
+        <div id="Mute" class="button"></div>
+        <div id="ChDown" class="button"></div>
+        <div id="one" class="button"></div>
+        <div id="two" class="button"></div>
+        <div id="three" class="button"></div>
+        <div id="four" class="button"></div>
+        <div id="five" class="button"></div>
+        <div id="six" class="button"></div>
+        <div id="seven" class="button"></div>
+        <div id="eight" class="button"></div>
+        <div id="nine" class="button"></div>
+        <div id="diamond" class="button"></div>
+        <div id="zero" class="button"></div>
+        <div id="ddiamond" class="button"></div>
+    </div>
+
+
+    <div class="toggle-container">
+        <input type="checkbox" id="commandModeToggle" />
+        <label for="commandModeToggle">Use quickDART?</label>
+    </div>
+    <div id="stb-list"></div>
+    <!-- chatbox -->
+    <div id="chatbox">
+        <div id="messages"></div>
+        <input type="text" id="user-input" placeholder="Type your message…" />
+        <button onclick="sendMessage()">Send</button>
+    </div>
+<script>
+
+const HOST=location.hostname;
+const API={list:'/get-stb-list',save:'/save-stb-list',auto:(r,s,b,d)=>`http://${HOST}:5001/auto/${r}/${s}/${b}/${d}`,dart:(s,b,a)=>`http://${HOST}:5001/dart/${s}/${b}/${a}`};
+window.addEventListener('DOMContentLoaded',()=>{
+  fetch('/hostname').then(r=>r.json()).then(d=>document.getElementById('host-name').textContent=d.hostname);
+  const toggle=document.getElementById('commandModeToggle');toggle.checked=(document.cookie.split('; ').find(c=>c.startsWith('commandMode='))?.split('=')[1]==='sendDart');
+  toggle.addEventListener('change',()=>document.cookie=`commandMode=${toggle.checked?'sendDart':'sendCommandToStbs'};path=/;max-age=${365*24*60*60}`);
+  bindButtons();fetch(API.list).then(r=>r.json()).then(d=>populateStbList(d.stbs));
+});
+function bindButtons(){document.querySelectorAll('.button').forEach(btn=>{
+  btn.addEventListener('mousedown',()=>{btn.classList.add('pressed');btn._start=Date.now();send(btn.id,'down');});
+  btn.addEventListener('mouseup',()=>{const dur=Date.now()-btn._start;send(btn.id,document.getElementById('commandModeToggle').checked?'up':dur);btn.classList.remove('pressed');});
+});}
+function send(id,payload){const sel=document.getElementById('stbList');if(!sel)return;Array.from(sel.selectedOptions).forEach(o=>fetch(document.getElementById('commandModeToggle').checked?API.dart(o.value,id,payload):API.auto(o.dataset.remote,o.value,id,payload)).catch(console.error));}
+function populateStbList(stbs){const d=document.getElementById('stb-list');d.innerHTML='';const sel=document.createElement('select');sel.id='stbList';sel.multiple=true;sel.style.width='100%';Object.entries(stbs).forEach(([n,v])=>{const o=document.createElement('option');o.value=n;o.textContent=n;o.dataset.remote=v.remote;sel.appendChild(o);});d.appendChild(sel);}
+function sendMessage(){const inp=document.getElementById('user-input'),msg=inp.value;if(!msg)return;const mdiv=document.getElementById('messages');mdiv.appendChild(Object.assign(document.createElement('p'),{textContent:'You: '+msg}));fetch('/ollama',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'dolphin-mixtral',prompt:msg,history:true,stream:false})}).then(r=>r.json()).then(d=>{mdiv.appendChild(Object.assign(document.createElement('p'),{textContent:'Aqua: '+d.response}));mdiv.scrollTop=mdiv.scrollHeight;inp.value='';}).catch(e=>mdiv.appendChild(Object.assign(document.createElement('p'),{textContent:'Error: '+e})));}
+</script>
+
+</body>
+</html>
