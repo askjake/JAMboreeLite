@@ -27,23 +27,25 @@ echo === Virtual‑env + deps ===
 "%VENV%\Scripts\pip.exe" install flask pyserial paramiko requests
 
 echo === Desktop shortcut ===
-powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "$ws=New-Object -ComObject WScript.Shell; ^
-   $s=$ws.CreateShortcut([IO.Path]::Combine($env:USERPROFILE,'Desktop','JAMboreeLite.lnk')); ^
-   $s.TargetPath='%VENV:\=\\%\\Scripts\\python.exe'; ^
-   $s.Arguments='-m jamboree.app'; ^
-   $s.WorkingDirectory='%INSTALL:\=\\%'; ^
-   $s.IconLocation='%SystemRoot%\\System32\\shell32.dll,175'; $s.Save()"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "
+  $ws = New-Object -ComObject WScript.Shell;
+  $s  = $ws.CreateShortcut([IO.Path]::Combine($env:USERPROFILE,'Desktop','JAMboreeLite.lnk'));
+  $s.TargetPath       = '%VENV:\=\\%\\Scripts\\python.exe';
+  $s.Arguments        = '-m jamboree.app';
+  $s.WorkingDirectory = '%INSTALL:\=\\%';
+  $s.IconLocation     = '%SystemRoot%\\System32\\shell32.dll,175';
+  $s.Save();
+"
 
 echo.
 choice /M "Add JAMboreeLite to start automatically at logon?" /C YN
 if errorlevel 2 goto done
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "$act=New-ScheduledTaskAction -Execute '%VENV:\=\\%\\Scripts\\python.exe' -Argument '-m jamboree.app'; ^
-   $tr =New-ScheduledTaskTrigger -AtLogOn; ^
-   Register-ScheduledTask -TaskName 'JAMboreeLite' -Action $act -Trigger $tr -RunLevel Highest -Force -Description 'Start JAMboree headless Flask'"
-
+powershell -NoProfile -ExecutionPolicy Bypass -Command "
+  $action  = New-ScheduledTaskAction  -Execute '%VENV:\=\\%\\Scripts\\python.exe' -Argument '-m jamboree.app';
+  $trigger = New-ScheduledTaskTrigger -AtLogOn;
+  Register-ScheduledTask -TaskName 'JAMboreeLite' -Action $action -Trigger $trigger -RunLevel Highest -Force -Description 'Start JAMboree headless Flask';
+"
 echo ✓ Startup task registered.
 :done
 echo.
