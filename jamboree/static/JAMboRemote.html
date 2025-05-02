@@ -159,6 +159,22 @@ document.addEventListener('keydown', e=>{
       seqPtr = 0;                      // reset on wrong key
   }
 });
+
+
+// ----------------------------------------------------------------- unpair
+document.getElementById('unpairRemote').addEventListener('click', () => {
+  const sel = document.getElementById('stbList');
+  if (!sel) { alert('Select STBs first'); return; }
+
+  Array.from(sel.selectedOptions).forEach(opt => {
+    fetch(`/unpair/${opt.value}`, {method:'POST'})
+       .then(r=>r.json())
+       .then(d=>console.log('unpair →', d))
+       .catch(console.error);
+  });
+});
+
+
 /********************************************************************/
 
 const HOST=location.hostname;

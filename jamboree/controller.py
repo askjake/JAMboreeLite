@@ -44,3 +44,31 @@ class Controller:
             line = f"{remote} {button_id} {int(action)}\n"
         _ = send_rf(port, remote, button_id, 0)  # uses KEY_CMD/RELEASE internally
         return {"dart_line": line.strip(), "ts": datetime.now(timezone.utc).isoformat()}
+
+    # ------------------------------------------------------ UNPAIR
+    def unpair(self, stb_name: str):
+        """SAT down 3 s, release • DVR+Guide down 3 s, release."""
+        stb = store.get(stb_name)
+        if not stb:
+            raise ValueError(f"STB '{stb_name}' not found")
+
+        remote = stb["remote"]
+
+        # 1 · SAT hold 3 s
+        self.handle_auto_remote(remote, stb_name, "sat", 3000)
+
+        # 2 · DVR & Guide quick‑DART down
+        time.sleep(0.1)
+        self.dart(stb_name, "dvr", "down")
+        time.sleep(0.05)                # slight stagger
+        self.dart(stb_name, "guide", "down")
+
+        # hold…
+        time.sleep(3.1)
+
+        # 3 · release both
+        self.dart(stb_name, "dvr", "up")
+        time.sleep(0.05)
+        self.dart(stb_name, "guide", "up")
+
+        return {"unpaired": stb_name, "ts": time.time()}

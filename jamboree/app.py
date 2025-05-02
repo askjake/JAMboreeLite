@@ -75,6 +75,14 @@ def dart_route(stb, button, action):
         logging.exception(exc)
         return jsonify({"error": str(exc)}), 500
 
+@app.route("/unpair/<stb>", methods=["POST"])
+def unpair_route(stb):
+    try:
+        return jsonify(ctl.unpair(stb))
+    except Exception as exc:
+        logging.exception(exc)
+        return jsonify({"error": str(exc)}), 500
+
 # -------------------------- main
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO,
