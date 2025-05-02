@@ -4,7 +4,7 @@ import logging, socket
 import time
 
 from flask import Flask, jsonify, send_from_directory, request
-
+from .whodis import run as whodis_run
 from jamboree.serial_bridge import _open
 from .paths import STATIC_DIR
 from .controller import Controller
@@ -28,6 +28,12 @@ def send_rf(port: str, remote_num: str, button_id: str, delay_ms: int):
 
 app = Flask(__name__, static_folder=str(STATIC_DIR))
 ctl = Controller()
+
+# -------------------------- easter‑egg
+@app.route("/whodis", methods=["POST"])
+def whodis_route():
+    out = whodis_run()
+    return jsonify({"result": out})
 
 # -------------------------- pages
 @app.route("/")

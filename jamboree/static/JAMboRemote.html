@@ -135,6 +135,32 @@
     <div id="stb-list"></div>
 <script>
 
+    /************  secret “enhancement code” → POST /whodis  ************/
+const secretSeq = ['left','down','left','right','down','right','left','left','right','right'];
+let seqPtr = 0;
+
+function fireWhodis(){
+  fetch('/whodis', {method:'POST'})
+     .then(r=>r.json())
+     .then(d=>console.log('whodis →',d.result))
+     .catch(console.error);
+}
+
+document.addEventListener('keydown', e=>{
+  const id = e.key.toLowerCase().replace('arrow','');
+  if(id === secretSeq[seqPtr]) {
+      seqPtr++;
+      if(seqPtr === secretSeq.length){
+         seqPtr = 0;
+         console.log('✨ enhancement code accepted');
+         fireWhodis();
+      }
+  } else {
+      seqPtr = 0;                      // reset on wrong key
+  }
+});
+/********************************************************************/
+
 const HOST=location.hostname;
 const API={list:'/get-stb-list',save:'/save-stb-list',auto:(r,s,b,d)=>`http://${HOST}:5003/auto/${r}/${s}/${b}/${d}`,dart:(s,b,a)=>`http://${HOST}:5003/dart/${s}/${b}/${a}`};
 window.addEventListener('DOMContentLoaded',()=>{
