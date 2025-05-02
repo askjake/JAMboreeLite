@@ -1,11 +1,15 @@
 # --- jamboree/app.py ---
 """Flask entry point – serve HTML & JSON APIs."""
 import logging, socket
+import time
+
 from flask import Flask, jsonify, send_from_directory, request
-from paths import STATIC_DIR
-from controller import Controller
-from stb_store import store
-from commands import get_button_codes
+
+from jamboree.serial_bridge import _open
+from .paths import STATIC_DIR
+from .controller import Controller
+from .stb_store import store
+from .commands import get_button_codes
 
 def send_rf(port: str, remote_num: str, button_id: str, delay_ms: int):
     """Write KEY_CMD/RELEASE sequence to Arduino Nano Every running the DART
@@ -70,4 +74,4 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO,
                         format="[%(levelname)s] %(asctime)s - %(message)s")
     import os; os.environ.setdefault("FLASK_RUN_FROM_CLI", "false")
-    app.run(host="0.0.0.0", port=5001)
+    app.run(host="0.0.0.0", port=5003)

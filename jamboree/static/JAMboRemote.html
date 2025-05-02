@@ -136,7 +136,7 @@
 <script>
 
 const HOST=location.hostname;
-const API={list:'/get-stb-list',save:'/save-stb-list',auto:(r,s,b,d)=>`http://${HOST}:5001/auto/${r}/${s}/${b}/${d}`,dart:(s,b,a)=>`http://${HOST}:5001/dart/${s}/${b}/${a}`};
+const API={list:'/get-stb-list',save:'/save-stb-list',auto:(r,s,b,d)=>`http://${HOST}:5003/auto/${r}/${s}/${b}/${d}`,dart:(s,b,a)=>`http://${HOST}:5003/dart/${s}/${b}/${a}`};
 window.addEventListener('DOMContentLoaded',()=>{
   fetch('/hostname').then(r=>r.json()).then(d=>document.getElementById('host-name').textContent=d.hostname);
   const toggle=document.getElementById('commandModeToggle');toggle.checked=(document.cookie.split('; ').find(c=>c.startsWith('commandMode='))?.split('=')[1]==='sendDart');

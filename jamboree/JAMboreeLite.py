@@ -14,7 +14,7 @@ shared.
 python -m venv venv && source venv/bin/activate
 pip install flask pyserial paramiko requests
 export JAMBOREE_BASE=./base.txt   # optional – defaults to cwd/base.txt
-python jamboree/app.py            # launches on 0.0.0.0:5001
+python jamboree/app.py            # launches on 0.0.0.0:5003
 ```
 
 """

@@ -4,7 +4,7 @@
 import json, threading
 from typing import Dict, Any
 
-from paths import BASE_PATH
+from .paths import BASE_PATH
 
 _lock = threading.Lock()
 

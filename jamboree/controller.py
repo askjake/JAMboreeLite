@@ -4,9 +4,9 @@ import logging, time
 from datetime import datetime, timezone
 from typing import Dict
 
-from serial_bridge import send_rf
-from sgs_bridge import send_sgs
-from stb_store import store
+from .serial_bridge import send_rf
+from .sgs_bridge import send_sgs
+from .stb_store import store
 
 class Controller:
     def __init__(self):

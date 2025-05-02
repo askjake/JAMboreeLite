@@ -5,7 +5,7 @@ from pathlib import Path
 
 SGS_REMOTE = shutil.which("sgs_remote.py") or Path(__file__).parent / "sgs_remote.py"
 
-from commands import get_sgs_codes
+from .commands import get_sgs_codes
 
 def send_sgs(stb_name: str, stb_ip: str, rxid: str, button_id: str, delay_ms: int):
     cmd_name = get_sgs_codes(button_id, delay_ms)
