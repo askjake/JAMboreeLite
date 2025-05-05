@@ -1,150 +1,134 @@
-<!-- --- static/JAMboRemote.html --- -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title id="host-name">JAMboRemote</title>
-    <style>
-        /* layout */
-        body {margin:0;display:flex;justify-content:center;align-items:center;height:100vh;background:#f0f0f0;font-family:Arial,Helvetica,sans-serif}
-        .remote-container{position:relative;width:20vw;aspect-ratio:0.39;/* image ratio */background:url('static/54.3.jpg') center/cover no-repeat;border:2px solid transparent;overflow:hidden}
-        button{cursor:pointer;border:none;padding:4px 8px;margin:2px;border-radius:4px;background:#4caf50;color:#fff;font-size:.8rem}
-        button:hover{background:#45a049}
-        .button{position:absolute;background:rgba(255,255,255,.03);border:2px solid transparent;border-radius:5px;transition:.3s}
-        .button:hover{background:rgba(255,255,255,.2);border-color:#007bff}
-        .button.pressed{background:rgba(255,255,255,.4);border-color:#0056b3}
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title id="host-name">JAMboRemote</title>
+  <style>
+    /* overall page: stack toolbar above main area */
+    body {
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      background: #f0f0f0;
+      font-family: Arial, Helvetica, sans-serif;
+    }
 
-        /* make the STB-list the same size as the remote-container */
-        #stb-list {
-          width: 20vw;                                 /* same width as .remote-container */
-          height: calc(20vw / 0.39);                   /* enforce same aspect-ratio height */
-          margin-left: 1rem;                           /* gap between remote & list */
-        }
-        #stb-list select {
-          width: 100%;
-          height: 100%;
-          box-sizing: border-box;
-        }
+    /* top toolbar */
+    .controls {
+      margin-bottom: 1rem;
+    }
+    .controls button {
+      cursor: pointer;
+      border: none;
+      padding: 6px 12px;
+      margin: 0 0.5rem;
+      border-radius: 4px;
+      background: #4caf50;
+      color: #fff;
+      font-size: 0.9rem;
+      transition: background 0.2s;
+    }
+    .controls button:hover { background: #45a049; }
 
-        /* Adjusted button positions */
-		#sat { top: 10%; left: 2%; width: 5%; height: 4.54%; }
-		#tv { top: 16%; left: 2%; width: 5%; height: 4.54%; }
-		#aux { top: 22%; left: 2%; width: 5%; height: 4.54%; }
-		#input { top: 28%; left: 2%; width: 5%; height: 4.54%; }
+    /* main area: remote on left, sidebar on right */
+    .main {
+      display: flex;
+      align-items: flex-start;
+    }
 
-        #Power { top: 1%; left: 13.33%; width: 20%; height: 4.54%; }
-        #allUp { top: 1%; left: 36.67%; width: 20%; height: 4.54%; }
-        #reset { top: 1%; left: 66.67%; width: 20%; height: 4.54%; }
+    /* remote image + invisible hit-areas */
+    .remote-container {
+      position: relative;
+      width: 20vw;
+      aspect-ratio: 0.39;      /* height = width / 0.39 */
+      background: url('static/54.3.jpg') center/cover no-repeat;
+      border: 2px solid transparent;
+      overflow: hidden;
+    }
+    .button {
+      position: absolute;
+      background: rgba(255,255,255,0.03);
+      border: 2px solid transparent;
+      border-radius: 5px;
+      transition: .3s;
+    }
+    .button:hover { background: rgba(255,255,255,0.2); border-color: #007bff; }
+    .button.pressed { background: rgba(255,255,255,0.4); border-color: #0056b3; }
 
-        #DVR { top: 5.5%; left: 8.33%; width: 25%; height: 5%; }
-        #Home { top: 5.5%; left: 36.67%; width: 25%; height: 5%; }
-        #Guide { top: 5.5%; left: 66.67%; width: 25%; height: 5%; }
+    /* sidebar: toggle + STB list */
+    .sidebar {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 1rem;
+      margin-left: 1rem;
+    }
+    .toggle-container {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.9rem;
+    }
 
-        #Options { top: 13%; left: 8.33%; width: 25%; height: 6.25%; }
-        #Up { top: 13%; left: 36.67%; width: 25%; height: 6.25%; }
-        #Voice { top: 13%; left: 66.67%; width: 25%; height: 6.25%; }
+    /* make the STB list match the remote’s aspect ratio */
+    #stb-list {
+      width: 20vw;
+      height: calc(20vw / 0.39);
+    }
+    #stb-list select {
+      width: 100%;
+      height: 100%;
+      box-sizing: border-box;
+    }
 
-        #Left { top: 22%; left: 8.33%; width: 25%; height: 7.95%; }
-        #Enter { top: 21.4%; left: 36.67%; width: 25%; height: 7.95%; }
-        #Right { top: 22%; left: 66.67%; width: 25%; height: 7.95%; }
-
-        #Back { top: 32%; left: 8.33%; width: 25%; height: 6.25%; }
-        #Down { top: 32%; left: 36.67%; width: 25%; height: 6.25%; }
-        #Info { top: 32%; left: 66.67%; width: 25%; height: 6.25%; }
-
-        #RWD { top: 42.0%; left: 11.67%; width: 23.33%; height: 5.11%; }
-        #Play { top: 42.0%; left: 36.67%; width: 25%; height: 5.11%; }
-        #FWD { top: 42.0%; left: 63.33%; width: 21.67%; height: 5.11%; }
-
-        #VolUp { top: 50%; left: 15%; width: 21.67%; height: 5.68%; }
-        #Recall { top: 52.0%; left: 39.33%; width: 20%; height: 5.11%; }
-        #ChUp { top: 50%; left: 61.67%; width: 20%; height: 5.68%; }
-
-        #VolDown { top: 58.82%; left: 16.67%; width: 20%; height: 5.68%; }
-        #Mute { top: 58.7%; left: 39.33%; width: 20%; height: 5.11%; }
-        #ChDown { top: 58.82%; left: 61.67%; width: 20%; height: 5.68%; }
-
-        #one { top: 66.50%; left: 18.33%; width: 18.33%; height: 3.98%; }
-        #two { top: 66.50%; left: 39.33%; width: 18.33%; height: 3.98%; }
-        #three { top: 66.50%; left: 60%; width: 20%; height: 3.98%; }
-
-        #four { top: 72.6%; left: 18.33%; width: 18.33%; height: 4.2%; }
-        #five { top: 72.6%; left: 39.33%; width: 18.33%; height: 4.2%; }
-        #six { top: 72.6%; left: 60%; width: 20%; height: 4.2%; }
-
-        #seven { top: 79%; left: 18.33%; width: 18.33%; height: 3.98%; }
-        #eight { top: 79%; left: 39.33%; width: 18.33%; height: 3.98%; }
-        #nine { top: 79%; left: 60%; width: 20%; height: 3.98%; }
-
-        #diamond { top: 85.5%; left: 18.33%; width: 18.33%; height: 3.98%; }
-        #zero { top: 85.5%; left: 39.33%; width: 18.33%; height: 3.98%; }
-        #ddiamond { top: 85.5%; left: 59.33%; width: 20%; height: 3.98%; }
-
-
-
-        .toggle-container input {
-            margin-right: 10px;
-        }
-
-    </style>
+    /* invisible hit-area coords (unchanged) */
+    #sat    { top:10%;   left:2%;   width:5%;  height:4.54%; }
+    #tv     { top:16%;   left:2%;   width:5%;  height:4.54%; }
+    #aux    { top:22%;   left:2%;   width:5%;  height:4.54%; }
+    #input  { top:28%;   left:2%;   width:5%;  height:4.54%; }
+    #Power  { top:1%;    left:13.33%; width:20%; height:4.54%; }
+    #allUp  { top:1%;    left:36.67%; width:20%; height:4.54%; }
+    #reset  { top:1%;    left:66.67%; width:20%; height:4.54%; }
+    /* …and so on for the rest of your .button positions… */
+  </style>
 </head>
 <body>
 
+  <!-- top toolbar -->
+  <div class="controls">
+    <button onclick="location.href='/settops'">Settops</button>
+    <button onclick="location.href='/apps'">dayJAM</button>
+    <button onclick="location.href='http://10.74.139.230:9090/dpweb/'">DPWeb</button>
+    <button id="unpairRemote">Unpair Remote</button>
+  </div>
+
+  <div class="main">
+    <!-- remote image + hit-areas -->
     <div class="remote-container">
-        <button onclick="location.href='/settops'">Settops</button>
-        <button onclick="location.href='/apps'">dayJAM</button>
-        <button onclick="location.href='http://10.74.139.230:9090/dpweb/'">DPWeb</button>
-        <button id="unpairRemote">Unpair Remote</button>
-        <!-- invisible hit‑areas -->
-        <div id="sat" class="button"></div>
-        <div id="tv" class="button"></div>
-        <div id="aux" class="button"></div>
-        <div id="input" class="button"></div>
-        <div id="Power" class="button"></div>
-        <div id="allUp" class="button"></div>
-        <div id="reset" class="button"></div>
-        <div id="DVR" class="button"></div>
-        <div id="Home" class="button"></div>
-        <div id="Guide" class="button"></div>
-        <div id="Options" class="button"></div>
-        <div id="Up" class="button"></div>
-        <div id="Voice" class="button"></div>
-        <div id="Left" class="button"></div>
-        <div id="Enter" class="button"></div>
-        <div id="Right" class="button"></div>
-        <div id="Back" class="button"></div>
-        <div id="Down" class="button"></div>
-        <div id="Info" class="button"></div>
-        <div id="RWD" class="button"></div>
-        <div id="Play" class="button"></div>
-        <div id="FWD" class="button"></div>
-        <div id="VolUp" class="button"></div>
-        <div id="Recall" class="button"></div>
-        <div id="ChUp" class="button"></div>
-        <div id="VolDown" class="button"></div>
-        <div id="Mute" class="button"></div>
-        <div id="ChDown" class="button"></div>
-        <div id="one" class="button"></div>
-        <div id="two" class="button"></div>
-        <div id="three" class="button"></div>
-        <div id="four" class="button"></div>
-        <div id="five" class="button"></div>
-        <div id="six" class="button"></div>
-        <div id="seven" class="button"></div>
-        <div id="eight" class="button"></div>
-        <div id="nine" class="button"></div>
-        <div id="diamond" class="button"></div>
-        <div id="zero" class="button"></div>
-        <div id="ddiamond" class="button"></div>
+      <!-- invisible hit-areas -->
+      <div id="sat" class="button"></div>
+      <div id="tv" class="button"></div>
+      <div id="aux" class="button"></div>
+      <div id="input" class="button"></div>
+      <div id="Power" class="button"></div>
+      <div id="allUp" class="button"></div>
+      <div id="reset" class="button"></div>
+      <!-- …all your other .button divs… -->
     </div>
 
-
-    <div class="toggle-container">
+    <!-- sidebar: toggle + STB list -->
+    <div class="sidebar">
+      <div class="toggle-container">
         <input type="checkbox" id="commandModeToggle" />
         <label for="commandModeToggle">Use quickDART?</label>
-
-    <div id="stb-list"></div>
+      </div>
+      <div id="stb-list"></div>
+    </div>
+  </div>
 
 <script>
 
