@@ -15,6 +15,18 @@
         .button:hover{background:rgba(255,255,255,.2);border-color:#007bff}
         .button.pressed{background:rgba(255,255,255,.4);border-color:#0056b3}
 
+        /* make the STB-list the same size as the remote-container */
+        #stb-list {
+          width: 20vw;                                 /* same width as .remote-container */
+          height: calc(20vw / 0.39);                   /* enforce same aspect-ratio height */
+          margin-left: 1rem;                           /* gap between remote & list */
+        }
+        #stb-list select {
+          width: 100%;
+          height: 100%;
+          box-sizing: border-box;
+        }
+
         /* Adjusted button positions */
 		#sat { top: 10%; left: 2%; width: 5%; height: 4.54%; }
 		#tv { top: 16%; left: 2%; width: 5%; height: 4.54%; }
@@ -131,8 +143,9 @@
     <div class="toggle-container">
         <input type="checkbox" id="commandModeToggle" />
         <label for="commandModeToggle">Use quickDART?</label>
-    </div>
+
     <div id="stb-list"></div>
+
 <script>
 
     /************  secret “enhancement code” → POST /whodis  ************/
