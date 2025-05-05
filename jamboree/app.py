@@ -3,6 +3,11 @@
 import logging, socket
 import time
 
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='[%(levelname)s] %(asctime)s - %(name)s - %(message)s'
+)
+
 from flask import Flask, jsonify, send_from_directory, request
 from .whodis import run as whodis_run
 from jamboree.serial_bridge import _open
@@ -85,7 +90,7 @@ def unpair_route(stb):
 
 # -------------------------- main
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO,
+    logging.basicConfig(level=logging.DEBUG,
                         format="[%(levelname)s] %(asctime)s - %(message)s")
     import os; os.environ.setdefault("FLASK_RUN_FROM_CLI", "false")
     app.run(host="0.0.0.0", port=5003)
