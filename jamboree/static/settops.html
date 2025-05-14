@@ -54,57 +54,104 @@ window.addEventListener('DOMContentLoaded',()=>{
   fetch(API_LIST).then(r=>r.json()).then(d=>{stbData=d.stbs;populateTable();});
 });
 
+/* ------------------  SGS pairing helpers  ------------------ */
+function rowData(el){
+  // walk up to <tr>, read all [data-k] cells into an object
+  const tr = el.closest('tr');
+  const d  = {};
+  tr.querySelectorAll('[data-k]').forEach(td=>{
+      d[td.dataset.k] = td.innerText.trim();
+  });
+  return d;
+}
+
+function pairStart(btn){
+  const d = rowData(btn);
+  if(!d.ip || !d.stb){
+      alert('Need IP and STB fields'); return;
+  }
+  fetch('/sgs/pair/start',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ip:d.ip, stb:d.stb})
+  }).then(r=>r.json()).then(j=>{
+      if(j.ok){
+         alert('PIN shown on TV ‑ enter it then hit <Enter>');
+         // focus the PIN <input> right next to the button
+         btn.previousElementSibling.focus();
+      }else alert('pair‑start failed: '+j.msg);
+  });
+}
+
+function sendPin(inp){
+  const pin = inp.value.trim();
+  if(pin.length!==6){ alert('6‑digit PIN'); return; }
+  const d = rowData(inp);
+  fetch('/sgs/pair/complete',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ip:d.ip, stb:d.stb, pin})
+  }).then(r=>r.json()).then(j=>{
+      alert(j.ok ? 'Paired 🎉' : 'Pairing failed: '+j.msg);
+      if(j.ok) inp.value='';            // clear box
+  });
+}
+
 function populateTable(){
-  const tbody=document.getElementById('stb-table-body');
-  tbody.innerHTML='';
-  Object.entries(stbData).forEach(([alias,det])=>{
-    const tr=document.createElement('tr');
-    tr.innerHTML=`<td contenteditable data-k='alias'>${alias}</td>
-      <td contenteditable data-k='stb'>${det.stb||''}</td>
-      <td contenteditable data-k='ip'>${det.ip||''}</td>
-      <td contenteditable data-k='protocol'>${det.protocol||''}</td>
-      <td contenteditable data-k='remote'>${det.remote||''}</td>
-      <td contenteditable data-k='model'>${det.model||''}</td>
-      <td contenteditable data-k='com_port'>${det.com_port||''}</td>
-      <td contenteditable data-k='sw_ver'>${det.sw_ver||''}</td>
-      <td contenteditable data-k='apps'>${det.apps||''}</td>
-      <td><button onclick="delRow(this)">Delete</button></td>`;
+  const tbody = document.getElementById('stb-table-body');
+  tbody.innerHTML = '';
+  Object.entries(stbData).forEach(([alias, det]) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td contenteditable data-k="alias">${alias}</td>
+      <td contenteditable data-k="stb">${det.stb||''}</td>
+      <td contenteditable data-k="ip">${det.ip||''}</td>
+      <td contenteditable data-k="protocol">${det.protocol||''}</td>
+      <td contenteditable data-k="remote">${det.remote||''}</td>
+      <td contenteditable data-k="model">${det.model||''}</td>
+      <td contenteditable data-k="com_port">${det.com_port||''}</td>
+      <td contenteditable data-k="sw_ver">${det.sw_ver||''}</td>
+      <td contenteditable data-k="apps">${det.apps||''}</td>
+      <td>
+        <button onclick="delRow(this)">Del</button>
+        <input type="text"
+               placeholder="PIN"
+               size="4"
+               style="width:50px;margin-left:4px"
+               onkeydown="if(event.key==='Enter'){sendPin(this)}">
+        <button onclick="pairStart(this)">Pair</button>
+      </td>
+    `;
     tbody.appendChild(tr);
   });
 }
 
 function addRow(){
-  const tr=document.createElement('tr');
-  tr.innerHTML=`<td contenteditable data-k='alias'></td>
-    <td contenteditable data-k='stb'></td><td contenteditable data-k='ip'></td>
-    <td contenteditable data-k='protocol'></td><td contenteditable data-k='remote'></td>
-    <td contenteditable data-k='model'></td><td contenteditable data-k='com_port'></td>
-    <td contenteditable data-k='sw_ver'></td><td contenteditable data-k='apps'></td>
-    <td><button onclick="delRow(this)">Delete</button></td>`;
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td contenteditable data-k="alias"></td>
+    <td contenteditable data-k="stb"></td>
+    <td contenteditable data-k="ip"></td>
+    <td contenteditable data-k="protocol"></td>
+    <td contenteditable data-k="remote"></td>
+    <td contenteditable data-k="model"></td>
+    <td contenteditable data-k="com_port"></td>
+    <td contenteditable data-k="sw_ver"></td>
+    <td contenteditable data-k="apps"></td>
+    <td>
+      <button onclick="delRow(this)">Del</button>
+      <input type="text"
+             placeholder="PIN"
+             size="4"
+             style="width:50px;margin-left:4px"
+             onkeydown="if(event.key==='Enter'){sendPin(this)}">
+      <button onclick="pairStart(this)">Pair</button>
+    </td>
+  `;
   document.getElementById('stb-table-body').appendChild(tr);
 }
-function delRow(btn){btn.closest('tr').remove();}
 
-function saveChanges(){
-  const rows=document.querySelectorAll('#stb-table-body tr');
-  const obj={};// collect
-  rows.forEach(r=>{
-    const d={};r.querySelectorAll('[data-k]').forEach(cell=>d[cell.dataset.k]=cell.innerText.trim());
-    if(d.alias)obj[d.alias]=d;
-  });
-  fetch(API_SAVE,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({stbs:obj})})
-    .then(r=>r.json()).then(j=>alert(j.success?'Saved':'Error'));
-}
 
-// simple sort
-let sortAsc={};
-function sortTable(idx){
-  const tbody=document.getElementById('stb-table-body');
-  const rows=Array.from(tbody.rows);
-  sortAsc[idx]=!sortAsc[idx];
-  rows.sort((a,b)=>a.cells[idx].innerText.localeCompare(b.cells[idx].innerText)*(sortAsc[idx]?1:-1));
-  rows.forEach(r=>tbody.appendChild(r));
-}
 </script>
 </body>
 </html>

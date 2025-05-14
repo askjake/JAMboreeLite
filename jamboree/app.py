@@ -34,6 +34,9 @@ def send_rf(port: str, remote_num: str, button_id: str, delay_ms: int):
 app = Flask(__name__, static_folder=str(STATIC_DIR))
 ctl = Controller()
 
+from .routes_sgs import bp_sgs
+
+app.register_blueprint(bp_sgs)
 # -------------------------- easter‑egg
 @app.route("/whodis", methods=["POST"])
 def whodis_route():
