@@ -151,6 +151,27 @@ function addRow(){
   document.getElementById('stb-table-body').appendChild(tr);
 }
 
+  function delRow(btn){ btn.closest('tr').remove(); }
+
+  function saveChanges(){
+    const rows = document.querySelectorAll('#stb-table-body tr');
+    const obj = {};
+    rows.forEach(r => {
+      const d = {};
+      r.querySelectorAll('[data-k]').forEach(cell => {
+        d[cell.dataset.k] = cell.innerText.trim();
+      });
+      if (d.alias) obj[d.alias] = d;
+    });
+    fetch(API_SAVE, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({stbs: obj})
+    })
+    .then(r => r.json())
+    .then(j => alert(j.success ? 'Saved' : 'Error'));
+  }
+
 
 </script>
 </body>

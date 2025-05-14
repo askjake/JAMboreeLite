@@ -566,7 +566,8 @@ class STB(object):
       return result
 
    def query_noauth(self, data, url=None):
-      return self.query_unsecure(data, url='http://' + self.ip + '/sgs_noauth')
+      noauth_url = url or f'http://{self.ip}:{self.port}/sgs_noauth'
+      return self.query_unsecure(data, url=noauth_url)
 
    def query_secure(self, data):
       headers = {'content-type': 'application/json'}
