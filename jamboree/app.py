@@ -15,6 +15,12 @@ from .paths import STATIC_DIR
 from .controller import Controller
 from .stb_store import store
 from .commands import get_button_codes
+from .routes_sgs import bp_sgs
+
+app = Flask(__name__, static_folder=str(STATIC_DIR))
+app.register_blueprint(bp_sgs)  # ← register it here, not after app.run()
+
+ctl = Controller()
 
 def send_rf(port: str, remote_num: str, button_id: str, delay_ms: int):
     """Write KEY_CMD/RELEASE sequence to Arduino Nano Every running the DART
@@ -31,12 +37,16 @@ def send_rf(port: str, remote_num: str, button_id: str, delay_ms: int):
     time.sleep((delay_ms + 50) / 1000.0)
     return line.strip()
 
-app = Flask(__name__, static_folder=str(STATIC_DIR))
-ctl = Controller()
 
-from .routes_sgs import bp_sgs
 
-app.register_blueprint(bp_sgs)
+
+# app.py  (add right after app.register_blueprint(bp_sgs))
+@app.errorhandler(Exception)
+def json_error(e):
+    code = getattr(e, "code", 500)
+    current_app.logger.exception(e)        # see stack-trace in the console
+    return jsonify(ok=False, msg=str(e)), code
+
 # -------------------------- easter‑egg
 @app.route("/whodis", methods=["POST"])
 def whodis_route():
@@ -90,6 +100,7 @@ def unpair_route(stb):
     except Exception as exc:
         logging.exception(exc)
         return jsonify({"error": str(exc)}), 500
+
 
 # -------------------------- main
 if __name__ == "__main__":

@@ -15,7 +15,7 @@
 # Note, pairing code is available in logs:
 #   # tail -F  /mnt/MISC_HD/esosal_log/stbCtrl/stbCtrl.0 |grep -e "Pairing code is"
 
-from sgs_lib import *
+from .sgs_lib import *
 import argparse
 
 # get params
