@@ -1,4 +1,4 @@
-<!-- --- static/settops.html --- -->
+<!-- static/settops.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -14,6 +14,7 @@
     button{padding:4px 8px;border:none;border-radius:4px;margin:2px;cursor:pointer;color:#fff;background:#4caf50;font-size:.8rem}
     button:hover{background:#45a049}
     .save-btn{background:#008cba} .save-btn:hover{background:#007bb5}
+    select { padding:2px 4px; }
   </style>
 </head>
 <body>
@@ -30,7 +31,7 @@
         <th onclick="sortTable(0)">Alias</th>
         <th onclick="sortTable(1)">STB</th>
         <th onclick="sortTable(2)">IP</th>
-        <th onclick="sortTable(3)">Protocol</th>
+        <th>Protocol</th>
         <th onclick="sortTable(4)">Remote</th>
         <th onclick="sortTable(5)">Model</th>
         <th onclick="sortTable(6)">COM</th>
@@ -50,17 +51,25 @@ const API_SAVE = '/save-stb-list';
 let stbData = {};
 
 window.addEventListener('DOMContentLoaded',()=>{
-  fetch('/hostname').then(r=>r.json()).then(d=>document.getElementById('host-name').textContent=d.hostname);
-  fetch(API_LIST).then(r=>r.json()).then(d=>{stbData=d.stbs;populateTable();});
+  fetch('/hostname')
+    .then(r=>r.json())
+    .then(d=>document.getElementById('host-name').textContent=d.hostname);
+
+  fetch(API_LIST)
+    .then(r=>r.json())
+    .then(d=>{ stbData = d.stbs; populateTable(); });
 });
 
-/* ------------------  SGS pairing helpers  ------------------ */
+// read both text cells and selects
 function rowData(el){
-  // walk up to <tr>, read all [data-k] cells into an object
   const tr = el.closest('tr');
-  const d  = {};
-  tr.querySelectorAll('[data-k]').forEach(td=>{
-      d[td.dataset.k] = td.innerText.trim();
+  const d = {};
+  tr.querySelectorAll('[data-k]').forEach(cell=>{
+    const key = cell.dataset.k;
+    const sel = cell.querySelector('select');
+    d[key] = sel
+      ? sel.value
+      : cell.innerText.trim();
   });
   return d;
 }
@@ -68,45 +77,58 @@ function rowData(el){
 function pairStart(btn){
   const d = rowData(btn);
   if(!d.ip || !d.stb){
-      alert('Need IP and STB fields'); return;
+    return alert('Need IP and STB fields');
   }
   fetch('/sgs/pair/start',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({ip:d.ip, stb:d.stb})
-  }).then(r=>r.json()).then(j=>{
-      if(j.ok){
-         alert('PIN shown on TV ‑ enter it then hit <Enter>');
-         // focus the PIN <input> right next to the button
-         btn.previousElementSibling.focus();
-      }else alert('pair‑start failed: '+j.msg);
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({ip:d.ip, stb:d.stb})
+  })
+  .then(r=>r.json())
+  .then(j=>{
+    if(j.ok){
+      alert('PIN shown on TV – enter it then hit Enter');
+      btn.previousElementSibling.focus();
+    } else {
+      alert('pair-start failed: '+j.msg);
+    }
   });
 }
 
 function sendPin(inp){
   const pin = inp.value.trim();
-  if(pin.length!==6){ alert('6‑digit PIN'); return; }
+  if(pin.length!==6){
+    return alert('6-digit PIN');
+  }
   const d = rowData(inp);
   fetch('/sgs/pair/complete',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({ip:d.ip, stb:d.stb, pin})
-  }).then(r=>r.json()).then(j=>{
-      alert(j.ok ? 'Paired 🎉' : 'Pairing failed: '+j.msg);
-      if(j.ok) inp.value='';            // clear box
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({ip:d.ip, stb:d.stb, pin})
+  })
+  .then(r=>r.json())
+  .then(j=>{
+    alert(j.ok ? 'Paired 🎉' : 'Pairing failed: '+j.msg);
+    if(j.ok) inp.value='';
   });
 }
 
 function populateTable(){
   const tbody = document.getElementById('stb-table-body');
   tbody.innerHTML = '';
-  Object.entries(stbData).forEach(([alias, det]) => {
+  Object.entries(stbData).forEach(([alias,det])=>{
+    const proto = det.protocol === 'SGS' ? 'SGS' : 'RF';
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td contenteditable data-k="alias">${alias}</td>
       <td contenteditable data-k="stb">${det.stb||''}</td>
       <td contenteditable data-k="ip">${det.ip||''}</td>
-      <td contenteditable data-k="protocol">${det.protocol||''}</td>
+      <td data-k="protocol">
+        <select>
+          <option value="RF"${proto==='RF'?' selected':''}>RF</option>
+          <option value="SGS"${proto==='SGS'?' selected':''}>SGS</option>
+        </select>
+      </td>
       <td contenteditable data-k="remote">${det.remote||''}</td>
       <td contenteditable data-k="model">${det.model||''}</td>
       <td contenteditable data-k="com_port">${det.com_port||''}</td>
@@ -114,11 +136,9 @@ function populateTable(){
       <td contenteditable data-k="apps">${det.apps||''}</td>
       <td>
         <button onclick="delRow(this)">Del</button>
-        <input type="text"
-               placeholder="PIN"
-               size="4"
+        <input type="text" placeholder="PIN" size="4"
                style="width:50px;margin-left:4px"
-               onkeydown="if(event.key==='Enter'){sendPin(this)}">
+               onkeydown="if(event.key==='Enter')sendPin(this)">
         <button onclick="pairStart(this)">Pair</button>
       </td>
     `;
@@ -127,12 +147,18 @@ function populateTable(){
 }
 
 function addRow(){
+  const tbody = document.getElementById('stb-table-body');
   const tr = document.createElement('tr');
   tr.innerHTML = `
     <td contenteditable data-k="alias"></td>
     <td contenteditable data-k="stb"></td>
     <td contenteditable data-k="ip"></td>
-    <td contenteditable data-k="protocol"></td>
+    <td data-k="protocol">
+      <select>
+        <option value="RF">RF</option>
+        <option value="SGS">SGS</option>
+      </select>
+    </td>
     <td contenteditable data-k="remote"></td>
     <td contenteditable data-k="model"></td>
     <td contenteditable data-k="com_port"></td>
@@ -140,39 +166,54 @@ function addRow(){
     <td contenteditable data-k="apps"></td>
     <td>
       <button onclick="delRow(this)">Del</button>
-      <input type="text"
-             placeholder="PIN"
-             size="4"
+      <input type="text" placeholder="PIN" size="4"
              style="width:50px;margin-left:4px"
-             onkeydown="if(event.key==='Enter'){sendPin(this)}">
+             onkeydown="if(event.key==='Enter')sendPin(this)">
       <button onclick="pairStart(this)">Pair</button>
     </td>
   `;
-  document.getElementById('stb-table-body').appendChild(tr);
+  tbody.appendChild(tr);
 }
 
-  function delRow(btn){ btn.closest('tr').remove(); }
+function delRow(btn){
+  btn.closest('tr').remove();
+}
 
-  function saveChanges(){
-    const rows = document.querySelectorAll('#stb-table-body tr');
-    const obj = {};
-    rows.forEach(r => {
-      const d = {};
-      r.querySelectorAll('[data-k]').forEach(cell => {
-        d[cell.dataset.k] = cell.innerText.trim();
-      });
-      if (d.alias) obj[d.alias] = d;
+function saveChanges(){
+  const rows = document.querySelectorAll('#stb-table-body tr');
+  const obj = {};
+  rows.forEach(r=>{
+    const d = {};
+    r.querySelectorAll('[data-k]').forEach(cell=>{
+      const key = cell.dataset.k;
+      const sel = cell.querySelector('select');
+      d[key] = sel
+        ? sel.value
+        : cell.innerText.trim();
     });
-    fetch(API_SAVE, {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({stbs: obj})
-    })
-    .then(r => r.json())
-    .then(j => alert(j.success ? 'Saved' : 'Error'));
-  }
+    if(d.alias) obj[d.alias] = d;
+  });
+  fetch(API_SAVE, {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({stbs: obj})
+  })
+  .then(r=>r.json())
+  .then(j=>alert(j.success?'Saved':'Error'));
+}
 
-
+// simple sort (ignores protocol column)
+let sortAsc = {};
+function sortTable(idx){
+  const tbody = document.getElementById('stb-table-body');
+  const rows = Array.from(tbody.rows);
+  sortAsc[idx] = !sortAsc[idx];
+  rows.sort((a,b)=>
+    a.cells[idx].innerText.localeCompare(b.cells[idx].innerText) *
+    (sortAsc[idx]?1:-1)
+  );
+  rows.forEach(r=>tbody.appendChild(r));
+}
 </script>
 </body>
 </html>
