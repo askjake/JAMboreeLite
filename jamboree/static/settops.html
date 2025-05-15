@@ -14,7 +14,28 @@
     button{padding:4px 8px;border:none;border-radius:4px;margin:2px;cursor:pointer;color:#fff;background:#4caf50;font-size:.8rem}
     button:hover{background:#45a049}
     .save-btn{background:#008cba} .save-btn:hover{background:#007bb5}
-    select { padding:2px 4px; }
+
+    /* Light-switch toggle */
+    .switch { position: relative; display: inline-block; width:60px; height:28px; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute; cursor: pointer;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: #ccc; transition: .4s; border-radius: 34px;
+    }
+    .slider:before {
+      position: absolute; content: "";
+      height: 22px; width: 22px;
+      left: 3px; bottom: 3px;
+      background: white; transition: .4s; border-radius: 50%;
+    }
+    input:checked + .slider { background: #4caf50; }
+    input:checked + .slider:before { transform: translateX(32px); }
+    .switch .labels {
+      position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+      display: flex; align-items: center; justify-content: space-between;
+      font-size: 0.65rem; padding: 0 6px; color: white; pointer-events: none;
+    }
   </style>
 </head>
 <body>
@@ -57,18 +78,17 @@ window.addEventListener('DOMContentLoaded',()=>{
 
   fetch(API_LIST)
     .then(r=>r.json())
-    .then(d=>{ stbData = d.stbs; populateTable(); });
+    .then(d=>{ stbData=d.stbs; populateTable(); });
 });
 
-// read both text cells and selects
+// read editable cells & switch state
 function rowData(el){
-  const tr = el.closest('tr');
-  const d = {};
+  const tr = el.closest('tr'), d={};
   tr.querySelectorAll('[data-k]').forEach(cell=>{
     const key = cell.dataset.k;
-    const sel = cell.querySelector('select');
-    d[key] = sel
-      ? sel.value
+    const cb = cell.querySelector('input[type=checkbox]');
+    d[key] = cb
+      ? (cb.checked ? 'SGS' : 'RF')
       : cell.innerText.trim();
   });
   return d;
@@ -76,59 +96,58 @@ function rowData(el){
 
 function pairStart(btn){
   const d = rowData(btn);
-  if(!d.ip || !d.stb){
-    return alert('Need IP and STB fields');
-  }
+  if(!d.ip || !d.stb) return alert('Need IP and STB');
   fetch('/sgs/pair/start',{
     method:'POST',
     headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({ip:d.ip, stb:d.stb})
+    body: JSON.stringify({ip:d.ip,stb:d.stb})
   })
   .then(r=>r.json())
   .then(j=>{
     if(j.ok){
-      alert('PIN shown on TV – enter it then hit Enter');
+      alert('PIN shown on TV – enter then hit Enter');
       btn.previousElementSibling.focus();
-    } else {
-      alert('pair-start failed: '+j.msg);
-    }
+    } else alert('pair-start failed: '+j.msg);
   });
 }
 
 function sendPin(inp){
-  const pin = inp.value.trim();
-  if(pin.length!==6){
-    return alert('6-digit PIN');
-  }
-  const d = rowData(inp);
+  const pin=inp.value.trim();
+  if(pin.length!==6) return alert('6-digit PIN');
+  const d=rowData(inp);
   fetch('/sgs/pair/complete',{
     method:'POST',
     headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({ip:d.ip, stb:d.stb, pin})
+    body: JSON.stringify({ip:d.ip,stb:d.stb,pin})
   })
   .then(r=>r.json())
   .then(j=>{
-    alert(j.ok ? 'Paired 🎉' : 'Pairing failed: '+j.msg);
+    alert(j.ok?'Paired 🎉':'Pairing failed: '+j.msg);
     if(j.ok) inp.value='';
   });
 }
 
+function makeSwitch(proto){
+  return `
+    <label class="switch">
+      <input type="checkbox"${proto==='SGS'?' checked':''}>
+      <span class="slider"></span>
+      <div class="labels"><span>RF</span><span>SGS</span></div>
+    </label>
+  `;
+}
+
 function populateTable(){
-  const tbody = document.getElementById('stb-table-body');
-  tbody.innerHTML = '';
+  const tbody=document.getElementById('stb-table-body');
+  tbody.innerHTML='';
   Object.entries(stbData).forEach(([alias,det])=>{
-    const proto = det.protocol === 'SGS' ? 'SGS' : 'RF';
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
+    const proto = (det.protocol==='SGS')?'SGS':'RF';
+    const tr=document.createElement('tr');
+    tr.innerHTML=`
       <td contenteditable data-k="alias">${alias}</td>
       <td contenteditable data-k="stb">${det.stb||''}</td>
       <td contenteditable data-k="ip">${det.ip||''}</td>
-      <td data-k="protocol">
-        <select>
-          <option value="RF"${proto==='RF'?' selected':''}>RF</option>
-          <option value="SGS"${proto==='SGS'?' selected':''}>SGS</option>
-        </select>
-      </td>
+      <td data-k="protocol">${makeSwitch(proto)}</td>
       <td contenteditable data-k="remote">${det.remote||''}</td>
       <td contenteditable data-k="model">${det.model||''}</td>
       <td contenteditable data-k="com_port">${det.com_port||''}</td>
@@ -137,7 +156,7 @@ function populateTable(){
       <td>
         <button onclick="delRow(this)">Del</button>
         <input type="text" placeholder="PIN" size="4"
-               style="width:50px;margin-left:4px"
+               style="width:50px;margin:0 4px"
                onkeydown="if(event.key==='Enter')sendPin(this)">
         <button onclick="pairStart(this)">Pair</button>
       </td>
@@ -147,18 +166,13 @@ function populateTable(){
 }
 
 function addRow(){
-  const tbody = document.getElementById('stb-table-body');
-  const tr = document.createElement('tr');
-  tr.innerHTML = `
+  const tbody=document.getElementById('stb-table-body');
+  const tr=document.createElement('tr');
+  tr.innerHTML=`
     <td contenteditable data-k="alias"></td>
     <td contenteditable data-k="stb"></td>
     <td contenteditable data-k="ip"></td>
-    <td data-k="protocol">
-      <select>
-        <option value="RF">RF</option>
-        <option value="SGS">SGS</option>
-      </select>
-    </td>
+    <td data-k="protocol">${makeSwitch('RF')}</td>
     <td contenteditable data-k="remote"></td>
     <td contenteditable data-k="model"></td>
     <td contenteditable data-k="com_port"></td>
@@ -167,7 +181,7 @@ function addRow(){
     <td>
       <button onclick="delRow(this)">Del</button>
       <input type="text" placeholder="PIN" size="4"
-             style="width:50px;margin-left:4px"
+             style="width:50px;margin:0 4px"
              onkeydown="if(event.key==='Enter')sendPin(this)">
       <button onclick="pairStart(this)">Pair</button>
     </td>
@@ -175,39 +189,34 @@ function addRow(){
   tbody.appendChild(tr);
 }
 
-function delRow(btn){
-  btn.closest('tr').remove();
-}
+function delRow(btn){ btn.closest('tr').remove(); }
 
 function saveChanges(){
-  const rows = document.querySelectorAll('#stb-table-body tr');
-  const obj = {};
+  const rows=document.querySelectorAll('#stb-table-body tr'), obj={};
   rows.forEach(r=>{
-    const d = {};
+    const d={};
     r.querySelectorAll('[data-k]').forEach(cell=>{
-      const key = cell.dataset.k;
-      const sel = cell.querySelector('select');
-      d[key] = sel
-        ? sel.value
-        : cell.innerText.trim();
+      const key=cell.dataset.k;
+      const cb=cell.querySelector('input[type=checkbox]');
+      d[key]=cb ? (cb.checked?'SGS':'RF') : cell.innerText.trim();
     });
-    if(d.alias) obj[d.alias] = d;
+    if(d.alias) obj[d.alias]=d;
   });
-  fetch(API_SAVE, {
+  fetch(API_SAVE,{
     method:'POST',
     headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({stbs: obj})
+    body: JSON.stringify({stbs:obj})
   })
   .then(r=>r.json())
   .then(j=>alert(j.success?'Saved':'Error'));
 }
 
-// simple sort (ignores protocol column)
-let sortAsc = {};
+// simple sort (skip protocol column)
+let sortAsc={};
 function sortTable(idx){
-  const tbody = document.getElementById('stb-table-body');
-  const rows = Array.from(tbody.rows);
-  sortAsc[idx] = !sortAsc[idx];
+  const tbody=document.getElementById('stb-table-body');
+  const rows=Array.from(tbody.rows);
+  sortAsc[idx]=!sortAsc[idx];
   rows.sort((a,b)=>
     a.cells[idx].innerText.localeCompare(b.cells[idx].innerText) *
     (sortAsc[idx]?1:-1)
