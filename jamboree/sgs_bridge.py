@@ -9,6 +9,7 @@ from pathlib import Path
 
 from .commands import get_sgs_codes
 from .sgs_lib import sgs_get_receiver_id, DEFAULT_CID     # for receiver / cid
+from .stb_store import store
 
 # full path to jamboree/sgs_remote.py (or system one if on $PATH)
 SGS_REMOTE = (
@@ -39,6 +40,16 @@ def send_sgs(stb_name: str, stb_ip: str, rxid: str,
         "receiver": sgs_get_receiver_id(),    # this PC’s RID
         "cid":      DEFAULT_CID,              # 1004 for dev boxes
     }
+
+    info = store.all().get(stb_name, {})
+    extra = []
+
+    if info.get("lname") and info.get("passwd"):
+        extra = [
+                "--prod",
+                "--login", info["lname"],
+                "--passwd", info["passwd"]
+        ]
 
     cmd = [
         sys.executable,               # same interpreter that runs Flask

@@ -86,11 +86,10 @@ if len(args.keys) == 1 and args.keys[0].startswith('{'):
     payload = json.loads(args.keys[0])
     print(json.dumps(payload))                 # keeps stdout for bridge
     result, _ = stb.sgs_command(payload)
-    if not result or result.get("result") != 1:
-        print("remote_key failed ->",
-              json.dumps(result or {}, indent=2))
-        sys.exit(1)
-    sys.exit(0)
+    ok = result and result.get("result") == 1
+    if not ok:
+        print("remote_key failed ->", json.dumps(result or {}, indent=2))
+    sys.exit(0 if ok else 1)
 
 
 if args.list:

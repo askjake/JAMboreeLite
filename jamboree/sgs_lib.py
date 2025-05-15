@@ -531,6 +531,9 @@ class STB(object):
       self.vbprint (self)
 
       # attach if it is prod stb
+      if self.login and self.passwd:
+         self.prod = True
+      # now pair/attach only if prod
       if self.prod:
          # pair if login/passwd not set
          if not ((bool(self.login) and bool(self.passwd))):
@@ -603,20 +606,20 @@ class STB(object):
    def sgs_command(self, data):
       if isinstance(data, (str, list)):
          data = json.loads(data)
-      if self.prod:
+      if self.login and self.passwd:
          if "cid" not in data:
                data["cid"] = self.cid
          if "receiver" not in data:
                data["receiver"] = self.rid
-         result = self.query_secure(data)
+         return self.query_secure(data), data.get("receiver")
       else:
          if "cid" not in data:
                data["cid"] = DEFAULT_CID
          if "receiver" not in data:
                data["receiver"] = DEFAULT_RECEIVER
-         result = self.query_unsecure(data)
+         return self.query_secure(data), data.get("receiver")
 
-      return result, data.get("receiver")
+
    '''
    def sgs_command(self, data):
       if (type(data) in (str,list)):

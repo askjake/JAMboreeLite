@@ -8,7 +8,7 @@ logging.basicConfig(
     format='[%(levelname)s] %(asctime)s - %(name)s - %(message)s'
 )
 
-from flask import Flask, jsonify, send_from_directory, request
+from flask import Flask, jsonify, send_from_directory, request, current_app
 from .whodis import run as whodis_run
 from jamboree.serial_bridge import _open
 from .paths import STATIC_DIR

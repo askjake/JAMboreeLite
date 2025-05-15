@@ -1,8 +1,8 @@
 # jamboree/routes_sgs.py
 from flask import Blueprint, request, jsonify
 from types import SimpleNamespace
-from .sgs_lib import STB                # relative import!
-
+from .sgs_lib import STB                 # relative import!
+from .sgs_lib import sgs_load_base, sgs_save_base
 bp_sgs = Blueprint("sgs", __name__, url_prefix="/sgs")
 
 # helper --------------------------------------------------------------
@@ -36,6 +36,8 @@ def pair_start():
         "type":"web","id":"S9","mac":box.mac
     })
     ok = resp and resp.get("result") == 1
+
+
     return jsonify(ok=ok, msg=None if ok else resp), (200 if ok else 500)
 
 # -------------------------------------------------------------------- #
@@ -59,4 +61,16 @@ def pair_complete():
         "type":"web","id":"S9","mac":box.mac
     })
     ok = resp and resp.get("result") == 1
+
+    if ok:
+        base = sgs_load_base()  # loads the dict from base.txt
+        # find the matching entry by receiver ID & IP
+
+        for alias, info in base.get("stbs", {}).items():
+
+            if info.get("stb") == box.stb and info.get("ip") == data.get("ip"):
+                    info["lname"] = resp["name"]
+                    info["passwd"] = resp["passwd"]
+                    sgs_save_base(base)  # writes base.txt back out
+                    break
     return jsonify(ok=ok, msg=None if ok else resp), (200 if ok else 400)
