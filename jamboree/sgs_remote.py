@@ -12,12 +12,12 @@
 #   jamboree/sgs_remote.py Back Menu
 #
 
-from sgs_lib import *
+from .sgs_lib import *
 import time
 import argparse
 import re
-from key_lookup import lookup
-from commands import get_button_number      # add near the other imports
+from .key_lookup import lookup
+from .commands import get_button_number      # add near the other imports
 
 SUPPORTED_KEYS = [
       "Power Toggle",

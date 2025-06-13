@@ -48,6 +48,23 @@ DEFAULT_STB_PORT       = 8080
 DEFAULT_CID            = 1004
 DEFAULT_RECEIVER       = "R0000000000-00"
 
+from typing import Dict, Any
+
+def resolve_sgs_ip(alias: str, cfg: Dict[str, Any]) -> str:
+    """
+    Return the IP that should receive an SGS request for `alias`.
+    For Joeys we proxy through their host Hopper.
+    """
+    rec = cfg["stbs"][alias]
+
+    if rec.get("role") == "joey" and rec.get("host"):
+        host_alias = rec["host"]
+        host_rec   = cfg["stbs"].get(host_alias)
+        if host_rec and host_rec.get("ip"):
+            return host_rec["ip"]
+
+    # default: talk to the device itself
+    return rec["ip"]
 
 def get_ip_address(ifname: str) -> str:
     """Return the IPv4 address for interface `ifname` (Unix only)."""
@@ -144,6 +161,27 @@ def sgs_load_base(path: Path = BASE_FILE) -> dict:
    except Exception:
       logging.exception("Error parsing base file %s", path)
       raise
+
+from .stb_store import store
+
+def resolve_sgs_ip(alias: str) -> str:
+    """
+    Return the IP that should receive an SGS request for `alias`.
+    • Joey  → Hopper’s IP   (proxy)
+    • Hopper → its own IP
+    """
+    rec = store.get(alias)
+    if not rec:
+        raise KeyError(f"Unknown alias '{alias}' in store")
+
+    if rec.get("role", "").lower() == "joey":
+        host_alias = rec.get("host")
+        host_rec   = store.get(host_alias or "")
+        if not host_rec:
+            raise KeyError(f"Joey '{alias}' references unknown host '{host_alias}'")
+        return host_rec["ip"]
+
+    return rec["ip"]
 
 # configure arguments parser - add common params that are applicable for any SGS
 def sgs_arg_parse (description, epilog=None):

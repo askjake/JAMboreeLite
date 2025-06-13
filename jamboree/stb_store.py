@@ -9,7 +9,7 @@ from .paths import BASE_PATH
 _lock = threading.Lock()
 
 class STBStore:
-    def __init__(self, path=BASE_PATH):
+    def __init__(self, path: object = BASE_PATH) -> None:
         self.path = path
         self._data: Dict[str, Any] = {}
         self.reload()
@@ -17,6 +17,7 @@ class STBStore:
     # public access -------------------------------------------------------
     def all(self):
         return self._data.get("stbs", {})
+
 
     def get(self, name: str):
         return self.all().get(name)
@@ -36,5 +37,6 @@ class STBStore:
     def _write(self):
         with open(self.path, "w", encoding="utf-8") as fh:
             json.dump(self._data, fh, indent=4)
+
 
 store = STBStore()
