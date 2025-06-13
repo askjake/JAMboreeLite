@@ -1,0 +1,215 @@
+{
+  "stbs": {
+    "14": {
+      "alias": "14",
+      "stb": "test",
+      "ip": "",
+      "protocol": "RF",
+      "remote": "14",
+      "model": "",
+      "com_port": "COM30",
+      "role": "hopper",
+      "host": "14"
+    },
+    "01-XIP712-1": {
+      "alias": "01-XIP712-1",
+      "stb": "R1886469638-42",
+      "ip": "192.168.0.130",
+      "protocol": "SGS",
+      "remote": "1",
+      "model": "Hopper Duo",
+      "com_port": "COM36",
+      "role": "hopper",
+      "host": "14"
+    },
+    "02-XIP712-2": {
+      "alias": "02-XIP712-2",
+      "stb": "R1969419103",
+      "ip": "172.20.110.39",
+      "protocol": "SGS",
+      "remote": "2",
+      "model": "Hopper Duo",
+      "com_port": "COM36",
+      "role": "hopper",
+      "host": "14"
+    },
+    "03-XIP712-3": {
+      "alias": "03-XIP712-3",
+      "stb": "R1911703860",
+      "ip": "192.168.123.13",
+      "protocol": "SGS",
+      "remote": "3",
+      "model": "undefined",
+      "com_port": "COM38",
+      "role": "hopper",
+      "host": "14"
+    },
+    "04-ZIP1018-4": {
+      "alias": "04-ZIP1018-4",
+      "stb": "R1911703992-06",
+      "ip": "172.20.110.165",
+      "protocol": "SGS",
+      "remote": "4",
+      "model": "Hopper3",
+      "com_port": "COM38",
+      "role": "hopper",
+      "host": "14"
+    },
+    "05-ZIP1018-5": {
+      "alias": "05-ZIP1018-5",
+      "stb": "R1911704038-53",
+      "ip": "192.168.123.15",
+      "protocol": "SGS",
+      "remote": "5",
+      "model": "Hopper3",
+      "com_port": "COM38",
+      "role": "hopper",
+      "host": "14"
+    },
+    "06-ZIP1018-6": {
+      "alias": "06-ZIP1018-6",
+      "stb": "R1911703088-93",
+      "ip": "192.168.123.16",
+      "protocol": "SGS",
+      "remote": "6",
+      "model": "Hopper3",
+      "com_port": "COM38",
+      "role": "hopper",
+      "host": "14"
+    },
+    "07-HEVC211-7": {
+      "alias": "07-HEVC211-7",
+      "stb": "R1911704957-58",
+      "ip": "192.168.123.47",
+      "protocol": "SGS",
+      "remote": "7",
+      "model": "undefined",
+      "com_port": "COM38",
+      "role": "hopper",
+      "host": "14"
+    },
+    "08-HEVC211-8": {
+      "alias": "08-HEVC211-8",
+      "stb": "R1911705114-17",
+      "ip": "192.168.123.18",
+      "protocol": "SGS",
+      "remote": "8",
+      "model": "Wally",
+      "com_port": "COM38",
+      "role": "hopper",
+      "host": "14"
+    },
+    "09-HEVC211-9": {
+      "alias": "09-HEVC211-9",
+      "stb": "R1911705088-90",
+      "ip": "192.168.123.19",
+      "protocol": "SGS",
+      "remote": "9",
+      "model": "Wally",
+      "com_port": "COM38",
+      "role": "hopper",
+      "host": "14"
+    },
+    "10-HEVC211-10": {
+      "alias": "10-HEVC211-10",
+      "stb": "R1886471404-26",
+      "ip": "192.168.123.20",
+      "protocol": "SGS",
+      "remote": "10",
+      "model": "Hopper Duo",
+      "com_port": "COM38",
+      "role": "hopper",
+      "host": "14"
+    },
+    "11-ZIP1018-11": {
+      "alias": "11-ZIP1018-11",
+      "stb": "R1956349185-98",
+      "ip": "192.168.123.21",
+      "protocol": "SGS",
+      "remote": "11",
+      "model": "undefined",
+      "com_port": "COM38",
+      "role": "hopper",
+      "host": "11-ZIP1018-11"
+    },
+    "12-XIP712-12": {
+      "alias": "12-XIP712-12",
+      "stb": "R1963244619-33",
+      "ip": "172.20.110.206",
+      "protocol": "SGS",
+      "remote": "12",
+      "model": "undefined",
+      "com_port": "COM38",
+      "role": "hopper",
+      "host": "14"
+    },
+    "13-HEVC211-13": {
+      "alias": "13-HEVC211-13",
+      "stb": "R1946890461-63",
+      "ip": "172.20.110.242",
+      "protocol": "SGS",
+      "remote": "13",
+      "model": "undefined",
+      "com_port": "COM38",
+      "role": "hopper",
+      "host": "14"
+    },
+    "14-ZIP1018-14": {
+      "alias": "14-ZIP1018-14",
+      "stb": "R1954124733-43",
+      "ip": "172.20.110.21",
+      "protocol": "SGS",
+      "remote": "14",
+      "model": "undefined",
+      "com_port": "COM38",
+      "role": "hopper",
+      "host": "14",
+      "lname": "v0001_client_9830a9879da74b50707792e71dca446da28c3bda",
+      "passwd": "35d1ea1fa281ed26a646f4f6b573b90cf1a0d18e"
+    },
+    "15-XiP712-15": {
+      "alias": "15-XiP712-15",
+      "stb": "R1911088562-63",
+      "ip": "172.20.110.187",
+      "protocol": "SGS",
+      "remote": "15",
+      "model": "XiP813",
+      "com_port": "COM38",
+      "role": "hopper",
+      "host": "test1"
+    },
+    "16-joey": {
+      "alias": "16-joey",
+      "stb": "R1971825176-96",
+      "ip": "172.20.110.7",
+      "protocol": "SGS",
+      "remote": "16",
+      "model": "Hopper Duo",
+      "com_port": "COM38",
+      "role": "joey",
+      "host": "14-ZIP1018-14"
+    },
+    "Home-Hopper": {
+      "alias": "Home-Hopper",
+      "stb": "R1955706171-71",
+      "ip": "192.168.0.60",
+      "protocol": "SGS",
+      "remote": "",
+      "model": "",
+      "com_port": "",
+      "role": "hopper",
+      "host": "14"
+    },
+    "Joey-1": {
+      "alias": "Joey-1",
+      "stb": "R1971349703-16",
+      "ip": "192.168.0.65",
+      "protocol": "SGS",
+      "remote": "",
+      "model": "",
+      "com_port": "",
+      "role": "joey",
+      "host": "Home-Hopper"
+    }
+  }
+}
