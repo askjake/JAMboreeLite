@@ -639,8 +639,8 @@ class STB(object):
          print("error Json parse")
          result = {'result' : -3}
       return result
-      
-      
+
+
    def sgs_command(self, data):
       if isinstance(data, (str, list)):
          data = json.loads(data)
@@ -673,8 +673,8 @@ class STB(object):
 
    '''
 
-       
-   # pair PC to STB using PIN. 
+
+   # pair PC to STB using PIN.
    # return true/false if paired or not
    def pair(self):
       self.vbprint("Pair to STB")
@@ -711,4 +711,4 @@ class STB(object):
    def detach(self):
       response = self.query_secure({"command": "detach", "receiver": self.rid, "cid": self.cid})
       if not (response and response["result"] == 1):
-         print ("Error, detach fail", json.dumps(response)) 
+         print ("Error, detach fail", json.dumps(response))
