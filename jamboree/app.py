@@ -67,7 +67,7 @@ def settops_page():
 def hostname():
     return jsonify({"hostname": socket.gethostname()})
 
-@app.route("/get-stb-list")
+@app.route("/get-stb-list", methods=["POST"])
 def get_stb_list():
     return jsonify({"stbs": store.all()})
 
@@ -77,7 +77,7 @@ def save_stb_list():
     return jsonify({"success": True})
 
 # -------------------------- control APIs
-@app.route("/auto/<remote>/<stb>/<button>/<int:delay>")
+@app.route("/auto/<remote>/<stb>/<button>/<int:delay>", methods=["POST"])
 def auto_route(remote, stb, button, delay):
     try:
         return jsonify(ctl.handle_auto_remote(remote, stb, button, delay))
@@ -85,7 +85,7 @@ def auto_route(remote, stb, button, delay):
         logging.exception(exc)
         return jsonify({"error": str(exc)}), 500
 
-@app.route("/dart/<stb>/<button>/<action>")
+@app.route("/dart/<stb>/<button>/<action>", methods=["POST"])
 def dart_route(stb, button, action):
     try:
         return jsonify(ctl.dart(stb, button, action))
@@ -108,3 +108,4 @@ if __name__ == "__main__":
                         format="[%(levelname)s] %(asctime)s - %(message)s")
     import os; os.environ.setdefault("FLASK_RUN_FROM_CLI", "false")
     app.run(host="0.0.0.0", port=5003)
+
