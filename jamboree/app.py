@@ -77,7 +77,7 @@ def save_stb_list():
     return jsonify({"success": True})
 
 # -------------------------- control APIs
-@app.route("/auto/<remote>/<stb>/<button>/<int:delay>")
+@app.route("/auto/<remote>/<stb>/<button>/<int:delay>", methods=["GET"])
 def auto_route(remote, stb, button, delay):
     try:
         return jsonify(ctl.handle_auto_remote(remote, stb, button, delay))
@@ -85,7 +85,7 @@ def auto_route(remote, stb, button, delay):
         logging.exception(exc)
         return jsonify({"error": str(exc)}), 500
 
-@app.route("/dart/<stb>/<button>/<action>")
+@app.route("/dart/<stb>/<button>/<action>", methods=["GET"])
 def dart_route(stb, button, action):
     try:
         return jsonify(ctl.dart(stb, button, action))
@@ -93,7 +93,7 @@ def dart_route(stb, button, action):
         logging.exception(exc)
         return jsonify({"error": str(exc)}), 500
 
-@app.route("/unpair/<stb>", methods=["POST"])
+@app.route("/unpair/<stb>", methods=["GET"])
 def unpair_route(stb):
     try:
         return jsonify(ctl.unpair(stb))
