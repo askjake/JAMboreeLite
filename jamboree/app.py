@@ -93,7 +93,7 @@ def dart_route(stb, button, action):
         logging.exception(exc)
         return jsonify({"error": str(exc)}), 500
 
-@app.route("/unpair/<stb>", methods=["GET"])
+@app.route("/unpair/<stb>", methods=["GET","POST"])
 def unpair_route(stb):
     try:
         return jsonify(ctl.unpair(stb))
@@ -108,6 +108,7 @@ if __name__ == "__main__":
                         format="[%(levelname)s] %(asctime)s - %(message)s")
     import os; os.environ.setdefault("FLASK_RUN_FROM_CLI", "false")
     app.run(host="0.0.0.0", port=5003)
+
 
 
 
