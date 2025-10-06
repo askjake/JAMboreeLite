@@ -589,26 +589,62 @@ class STB(object):
       #if self.cid:
       #   self.detach()
 
-   def query_unsecure(self, data, url=None):
-      if not url: url = f"http://{self.ip}:{self.port}/www/sgs"
-      self.vbprint ("  --- request:  ",json.dumps(data))
-      try:
-         response = requests.post(url, data=json.dumps(data))
-      except Exception as inst:
-         print("URL request failed:", inst)
-         return None
-      self.vbprint ("  --- response: ", response.text)
-      # parse response
-      try:
-         result = json.loads(response.text)
-      except:
-         print("error Json parse")
-         result = {'result' : -3}
-      return result
+   def query_unsecure(self, data, url=None, timeout=5.0):
+       """
+       POST JSON to an HTTP SGS endpoint and return parsed JSON.
+       On non-JSON or 401/403, return a rich error object instead of blowing up.
+       """
+       url = url or f"http://{self.ip}:{self.port}/www/sgs"
+       headers = {"Content-Type": "application/json"}
+       self.vbprint("  --- request:", json.dumps(data), "to", url)
+       try:
+           resp = requests.post(url, json=data, headers=headers, timeout=timeout)
+       except Exception as inst:
+           print("URL request failed:", inst)
+           return None
 
-   def query_noauth(self, data, url=None):
-      noauth_url = url or f'http://{self.ip}:{self.port}/sgs_noauth'
-      return self.query_unsecure(data, url=noauth_url)
+       self.vbprint("  --- response:", resp.text)
+       # Make auth problems obvious
+       if resp.status_code in (401, 403):
+           return {
+               "result": -13,
+               "error": "auth_required_or_opt_in_disabled",
+               "http_status": resp.status_code,
+               "url": url,
+               "text": resp.text[:800],
+           }
+
+       # Parse JSON or report the failure with context
+       try:
+           return resp.json()
+       except Exception:
+           print("error Json parse")
+           return {
+               "result": -3,
+               "error": "json_parse_failed",
+               "http_status": resp.status_code,
+               "url": url,
+               "text": resp.text[:800],
+           }
+
+   def query_noauth(self, data):
+       """
+       Pairing/noauth helper. Try configured port first, then fall back to :8080.
+       """
+       # 1) first try current port (often 80)
+       url = f"http://{self.ip}:{self.port}/sgs_noauth"
+       out = self.query_unsecure(data, url=url)
+       if out and out.get("result") in (1,):
+           return out
+
+       # 2) if we got an auth/parse problem, some images expose noauth on :8080
+       if (not out or out.get("result") in (-3, -13)) and str(self.port) != "8080":
+           alt = f"http://{self.ip}:8080/sgs_noauth"
+           self.vbprint("  --- retrying noauth on", alt)
+           out2 = self.query_unsecure(data, url=alt)
+           return out2 or out
+
+       return out
 
    def query_secure(self, data):
       headers = {'content-type': 'application/json'}
@@ -640,23 +676,25 @@ class STB(object):
          result = {'result' : -3}
       return result
 
-
    def sgs_command(self, data):
-      if isinstance(data, (str, list)):
-         data = json.loads(data)
-      if self.login and self.passwd:
-         if "cid" not in data:
-               data["cid"] = self.cid
-         if "receiver" not in data:
-               data["receiver"] = self.rid
-         return self.query_secure(data), data.get("receiver")
-      else:
-         if "cid" not in data:
-               data["cid"] = DEFAULT_CID
-         if "receiver" not in data:
-               data["receiver"] = DEFAULT_RECEIVER
-         return self.query_secure(data), data.get("receiver")
+       """
+       Route to secure or unsecure depending on whether we have credentials.
+       """
+       if isinstance(data, (str, list)):
+           data = json.loads(data)
 
+       if self.login and self.passwd:
+           if "cid" not in data:
+               data["cid"] = self.cid
+           if "receiver" not in data:
+               data["receiver"] = self.rid
+           return self.query_secure(data), data.get("receiver")
+       else:
+           if "cid" not in data:
+               data["cid"] = DEFAULT_CID
+           if "receiver" not in data:
+               data["receiver"] = DEFAULT_RECEIVER
+           return self.query_unsecure(data), data.get("receiver")
 
    '''
    def sgs_command(self, data):
