@@ -72,7 +72,6 @@ That’s it.
   * After pairing, uses **HTTPS mutual‑TLS** to `https://<hopper>/www/sgs` with digest‑auth (auto‑fallback to HTTP if the image allows it)
   * **Joey routing**: if an STB has `"role": "joey"` and `"host": "<HopperAlias>"`, commands are sent to the host Hopper’s IP
 * **Base file store** (`jamboree/stb_store.py`) – edits to `/settops` persist to `base.txt`
-* **Helper**: `whodis` integration at **`/whodis`** (auto‑clones `askjake/whodis` and runs `ssh.vbs` on Windows)
 
 ---
 
@@ -176,7 +175,6 @@ If your image exposes no‑auth on `:8080` only, the code retries there automati
 **Utilities**
 
 * `GET /unpair/<alias>` → Sends the SAT/DVR/Guide “unpair” combo over DART
-* `GET /whodis` → runs `askjake/whodis`’s `ssh.vbs` and returns output
 
 ---
 
