@@ -17,7 +17,7 @@ from .commands import get_button_codes                                        # 
 from .routes_sgs import bp_sgs
 
 # IMPORTANT: create serial_mgr BEFORE importing Controller to avoid circular import
-from serial_manager import SerialManager                                      # :contentReference[oaicite:7]{index=7}
+from .serial_manager import SerialManager                                      # :contentReference[oaicite:7]{index=7}
 serial_mgr = SerialManager()
 
 from .controller import Controller                                            # :contentReference[oaicite:8]{index=8}
@@ -132,3 +132,4 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG, format="[%(levelname)s] %(asctime)s - %(message)s")
     os.environ.setdefault("FLASK_RUN_FROM_CLI", "false")
     app.run(host="0.0.0.0", port=5003)
+
