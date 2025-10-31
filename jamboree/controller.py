@@ -13,20 +13,18 @@ class Controller:
         logging.info("Controller initialised – %d STBs", len(store.all()))
 
     # ------------------------------------------------------------------ RF / AUTO
-    def handle_auto_remote(self, remote: str, stb_name: str, button_id: str,
-                           delay: int) -> Dict:
+    def handle_auto_remote(self, remote: str, stb_name: str, button_id: str, delay: int) -> Dict:
         stb = store.get(stb_name)
         if not stb:
             raise ValueError(f"STB '{stb_name}' not found in base.txt")
         if stb["protocol"].upper() == "SGS":
             return self.sgs_remote(stb_name, stb["ip"], stb["stb"], button_id, delay)
-        # default RF
-        ack = send_rf(stb["com_port"], remote, button_id, delay)
+        # default RF via serial_mgr using the STB alias
+        ack = send_rf(stb_name, remote, button_id, delay)
         return {"rf_line": ack, "ts": datetime.now(timezone.utc).isoformat()}
 
     # ------------------------------------------------------------------ SGS
-    def sgs_remote(self, stb_name: str, stb_ip: str, rxid: str,
-                   button_id: str, delay: int):
+    def sgs_remote(self, stb_name: str, stb_ip: str, rxid: str, button_id: str, delay: int):
         resp = send_sgs(stb_name, stb_ip, rxid, button_id, delay)
         return {"stdout": resp, "ts": datetime.now(timezone.utc).isoformat()}
 
@@ -35,38 +33,34 @@ class Controller:
         stb = store.get(stb_name)
         if not stb:
             raise ValueError(f"STB '{stb_name}' not found in base.txt")
-        port, remote = stb["com_port"], stb["remote"]
+        remote = stb["remote"]
         if action in ("down", "up"):
-            # Quick-DART: two discrete events
-            sent = send_quick_dart(port, remote, button_id, action)
+            sent = send_quick_dart(stb_name, remote, button_id, action)
         else:
-            # Legacy (timed) DART: single hold with ms
-            sent = send_rf(port, remote, button_id, int(action))
-
+            sent = send_rf(stb_name, remote, button_id, int(action))
         return {"dart_line": sent, "ts": datetime.now(timezone.utc).isoformat()}
 
     # ------------------------------------------------------ UNPAIR
     def unpair(self, stb_name: str):
-        """SAT down 3 s, release • DVR+Guide down 3 s, release."""
+        """SAT down 3 s, release • DVR+Guide down 3 s, release."""
         stb = store.get(stb_name)
         if not stb:
             raise ValueError(f"STB '{stb_name}' not found")
 
         remote = stb["remote"]
 
-        # 1 · SAT hold 3 s
+        # 1 · SAT hold 3 s
         self.handle_auto_remote(remote, stb_name, "sat", 3010)
 
-        # 2 · DVR & Guide quick‑DART down
+        # 2 · DVR & Guide quick-DART down
         time.sleep(0.1)
         self.dart(stb_name, "dvr", "down")
-        time.sleep(0.05)                # slight stagger
+        time.sleep(0.05)
         self.dart(stb_name, "guide", "down")
 
-        # hold…
         time.sleep(3.1)
 
-        # 3 · release both
+        # 3 · release both
         self.dart(stb_name, "dvr", "up")
         time.sleep(0.05)
         self.dart(stb_name, "guide", "up")

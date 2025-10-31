@@ -1,90 +1,42 @@
 # --- jamboree/serial_bridge.py ---
-"""115200‑baud helper with verbose debug logging."""
-import serial, time, logging
-from typing import Dict
+"""Serial helpers routed through the global serial_mgr (no direct pyserial)."""
+import logging, time
+from typing import Optional
 from .commands import get_button_codes, get_button_number
 
-_PORTS: Dict[str, serial.Serial] = {}
-BAUDRATE = 115200
-READ_TIMEOUT = 0.3             # seconds to wait for Arduino echo
+# IMPORTANT: serial_mgr is created in app.py before controller imports us.
+from .app import serial_mgr  # type: ignore
 
-def _open(port: str) -> serial.Serial:
-    """Open (or reuse) a serial handle."""
-    if port not in _PORTS or not _PORTS[port].is_open:
-        _PORTS[port] = serial.Serial(
-            port=port,
-            baudrate=BAUDRATE,
-            bytesize=serial.EIGHTBITS,
-            parity=serial.PARITY_NONE,
-            stopbits=serial.STOPBITS_ONE,
-            timeout=READ_TIMEOUT,
-        )
-        logging.info("Opened serial %s", port)
-    return _PORTS[port]
+def _enqueue(alias_or_com: str, line: str) -> bool:
+    ok = serial_mgr.write(alias_or_com, line.encode())
+    if not ok:
+        logging.warning("serial write enqueue failed for %s (%r)", alias_or_com, line.strip())
+    return ok
 
-
-# --------------------------------------------------------------------- RF helper
-from .commands import get_button_codes
-
-def send_rf(port: str, remote_num: str, button_id: str, delay_ms: int) -> str:
+def send_rf(alias_or_com: str, remote_num: str, button_id: str, delay_ms: int) -> str:
     """
-    Build the `${remote} KEY_CMD KEY_RELEASE delay` line expected by the
-    Arduino “DART” sketch, write it, then try to read back *one* line so
-    you can see the board’s echo/ACK in the log.
-
-    Returns the exact line written (stripped).
+    Build: <remote> <KEY_CMD> <KEY_RELEASE> <delay_ms>
+    and enqueue to the serial manager under the given alias (preferred) or COM.
     """
     delay_ms = max(int(delay_ms), 80)
     codes = get_button_codes(button_id)
     if not codes:
         raise ValueError(f"Unknown button_id '{button_id}'")
-
     line = f"{remote_num} {codes['KEY_CMD']} {codes['KEY_RELEASE']} {delay_ms}\n"
-    ser = _open(port)
-
-    # ---- write
-    ser.write(line.encode())
-    ser.flush()
-    logging.debug("→ %s | %s", port, line.strip())
-
-    # ---- optional read‑back (non‑blocking)
-    echo = b""
-    start = time.time()
-    while time.time() - start < READ_TIMEOUT:
-        chunk = ser.readline()
-        if chunk:
-            echo = chunk
-            break
-    if echo:
-        logging.debug("← %s | %s", port, echo.decode(errors='replace').rstrip())
-
-    # small pause so GUI “tap” commands don’t outrun the MCU
+    _enqueue(alias_or_com, line)
+    # Give the board a hair so UI taps don't outrun it
     time.sleep((delay_ms + 50) / 1000.0)
+    logging.debug("→ [%s] %s", alias_or_com, line.strip())
     return line.strip()
 
-
-# --------------------------------------------------------------------- Quick-DART helper
-def send_quick_dart(port: str, remote_num: str, button_id: str, action: str) -> str:
+def send_quick_dart(alias_or_com: str, remote_num: str, button_id: str, action: str) -> str:
     """
-    Send a quick-DART command ('down' or 'up') to the Arduino:
-      <remoteNum> <buttonNumber> <action>
-    where action is literally "down" or "up".
+    Quick-DART: <remoteNum> <buttonNumber> <action>  (action: 'down'|'up')
     """
-    button_number = get_button_number(button_id)
-    if not button_number:
+    num = get_button_number(button_id)
+    if not num:
         raise ValueError(f"Unknown button_id '{button_id}'")
-
-    line = f"{remote_num} {button_number} {action}\n"
-    ser = _open(port)
-
-    # write the quick-DART line
-    ser.write(line.encode())
-    ser.flush()
-    logging.debug("→ %s | %s", port, line.strip())
-
-    # read back one line of echo (if any)
-    echo = ser.readline()
-    if echo:
-        logging.debug("← %s | %s", port, echo.decode(errors='replace').rstrip())
-
+    line = f"{remote_num} {num} {action}\n"
+    _enqueue(alias_or_com, line)
+    logging.debug("→ [%s] %s", alias_or_com, line.strip())
     return line.strip()
