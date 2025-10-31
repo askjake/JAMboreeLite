@@ -125,6 +125,42 @@ def sgs_get_receiver_id() -> str:
     logging.warning("Falling back to default receiver %s", DEFAULT_RECEIVER)
     return DEFAULT_RECEIVER
 
+# --- add near sgs_save_base / sgs_load_base ---
+def sgs_upsert_credentials(
+    name: str | None,
+    ip: str | None,
+    stb_id: str | None,
+    login: str,
+    passwd: str,
+    path: Path = BASE_FILE,
+) -> None:
+    """
+    Ensure base.txt has an entry for `name` and store login/passwd there.
+    If the entry doesn't exist yet, create a minimal one with ip/stb if available.
+    """
+    try:
+        base = sgs_load_base(path)
+    except FileNotFoundError:
+        base = {}
+
+    stbs = base.setdefault("stbs", {})
+    if not name:
+        # fallback key if no name was provided; prefer ReceiverID, then IP
+        name = str(stb_id or ip or "UNNAMED")
+
+    entry = stbs.setdefault(str(name), {})
+    if stb_id and "stb" not in entry:
+        entry["stb"] = stb_id
+    if ip and "ip" not in entry:
+        entry["ip"] = ip
+
+    entry["lname"]  = login
+    entry["passwd"] = passwd
+    entry["protocol"] = entry.get("protocol", "SGS")
+    entry["prod"] = True
+
+    sgs_save_base(base, path)
+
 
 def sgs_save_base(base: dict, path: Path = BASE_FILE) -> None:
    """
@@ -511,7 +547,7 @@ class STB(object):
          if args.verbose: self.verbose = args.verbose
          if args.prod:    self.prod    = args.prod
          if args.login:   self.login   = args.login
-         if args.passwd:  self.passw   = args.passwd
+         if args.passwd:  self.passwd   = args.passwd
 
       # load rest of info from file
       base = sgs_load_base()
@@ -715,24 +751,40 @@ class STB(object):
    # pair PC to STB using PIN.
    # return true/false if paired or not
    def pair(self):
-      self.vbprint("Pair to STB")
-      querry = {"command": "device_pairing_start", "receiver": self.rid, "stb": self.stb, "app": "JAMboree", "name": "JAMboree", "type": "python", "id": "S9", "mac":self.mac}
-      response = self.query_noauth (querry)
-      if response["result"] != 1:
-         print ("Error start pairing, result", response["result"])
-         return False
-      pin = input("Please enter PIN: ")
-      querry["command"] = "device_pairing_complete"
-      querry["pin"] = pin
-      response = self.query_noauth (querry)
-      if response["result"] != 1:
-         print ("Error complete pairing, result", response["result"])
-         return False
-      self.login  = response["name"]
-      self.passwd = response["passwd"]
-      print ("login: ", self.login)
-      print ("passwd:", self.passwd)
-      return True
+       self.vbprint("Pair to STB")
+       querry = {"command": "device_pairing_start", "receiver": self.rid, "stb": self.stb, "app": "JAMboree",
+                 "name": "JAMboree", "type": "python", "id": "S9", "mac": self.mac}
+       response = self.query_noauth(querry)
+       if response["result"] != 1:
+           print("Error start pairing, result", response["result"])
+           return False
+       pin = input("Please enter PIN: ")
+       querry["command"] = "device_pairing_complete"
+       querry["pin"] = pin
+       response = self.query_noauth(querry)
+       if response["result"] != 1:
+           print("Error complete pairing, result", response["result"])
+           return False
+
+       self.login = response["name"]
+       self.passwd = response["passwd"]
+       print("login: ", self.login)
+       print("passwd:", self.passwd)
+
+       # NEW: persist to base.txt under the selected STB name
+       try:
+           sgs_upsert_credentials(
+               name=self.name,
+               ip=self.ip,
+               stb_id=self.stb,
+               login=self.login,
+               passwd=self.passwd,
+           )
+           self.vbprint(f"Saved credentials to {BASE_FILE}")
+       except Exception:
+           logging.exception("Could not persist credentials to base.txt")
+
+       return True
 
    def attach(self):
       # first check if already attached
