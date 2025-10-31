@@ -24,12 +24,15 @@ _EXCLUSIVE_OK = _supports_exclusive_kwarg()
 _COM_RE = re.compile(r"^(COM\d+|/dev/tty[^ ]+|ttyS\d+|ttyUSB\d+)$", re.I)
 
 class SerialPortWorker(threading.Thread):
-    def __init__(self, name: str, com: str, baud: int = DEFAULT_BAUD,
+    """
+    One OS handle to one physical COM port.
+    This worker is keyed by COM (not alias). Multiple aliases can write to it.
+    """
+    def __init__(self, com: str, baud: int = DEFAULT_BAUD,
                  expect: bytes = b"PONG", ping: bytes = b"PING\n",
                  on_rx: Optional[Callable[[bytes, str], None]] = None,
                  vid: Optional[int] = None, pid: Optional[int] = None):
-        super().__init__(name=f"sp-{name}", daemon=True)
-        self.alias = name
+        super().__init__(name=f"sp-{com}", daemon=True)
         self.com   = com
         self.baud  = baud
         self.expect = expect
@@ -54,11 +57,10 @@ class SerialPortWorker(threading.Thread):
             self._write_q.put(data, timeout=timeout_s)
             return True
         except queue.Full:
-            LOG.warning("[%s] write queue full; dropping write", self.alias)
+            LOG.warning("[%-6s] write queue full; dropping write", self.com)
             return False
 
     def _resolve_port(self) -> str:
-        # If VID/PID given, prefer the current device for re-enumerations
         if self._vid is None or self._pid is None:
             return self.com
         for p in list_ports.comports():
@@ -74,22 +76,21 @@ class SerialPortWorker(threading.Thread):
                 baudrate=self.baud,
                 timeout=READ_TIMEOUT_S,
                 write_timeout=WRITE_TIMEOUT_S,
-                rtscts=False,
-                dsrdtr=False,
+                rtscts=False, dsrdtr=False,
                 inter_byte_timeout=0.1,
             )
             if _EXCLUSIVE_OK:
-                kwargs["exclusive"] = True
+                kwargs["exclusive"] = True  # POSIX only; ignored on Windows
             self._ser = serial.Serial(**kwargs)
             time.sleep(2.0)  # Arduino bootloader settle
             with contextlib.suppress(Exception):
                 self._ser.reset_input_buffer(); self._ser.reset_output_buffer()
-            LOG.info("[%s] opened %s @ %d", self.alias, self._ser.port, self.baud)
+            LOG.info("[%-6s] opened %s @ %d", self.com, self._ser.port, self.baud)
             self._last_ok = time.monotonic()
             self._last_ping = 0.0
             return True
         except Exception as e:
-            LOG.warning("[%s] open %s failed: %s", self.alias, port, e)
+            LOG.warning("[%-6s] open %s failed: %s", self.com, port, e)
             self._ser = None
             return False
 
@@ -98,12 +99,12 @@ class SerialPortWorker(threading.Thread):
             with contextlib.suppress(Exception):
                 port = self._ser.port
                 self._ser.close()
-                LOG.info("[%s] closed %s", self.alias, port)
+                LOG.info("[%-6s] closed %s", self.com, port)
         self._ser = None
 
     def _soft_reset(self):
         if not self._ser: return
-        LOG.warning("[%s] soft reset (DTR toggle)", self.alias)
+        LOG.warning("[%-6s] soft reset (DTR toggle)", self.com)
         try:
             self._ser.dtr = False
             time.sleep(0.2)
@@ -114,7 +115,7 @@ class SerialPortWorker(threading.Thread):
             self._last_ok = time.monotonic()
             self._last_ping = 0.0
         except Exception as e:
-            LOG.error("[%s] DTR toggle failed: %s", self.alias, e)
+            LOG.error("[%-6s] DTR toggle failed: %s", self.com, e)
             self._close_serial()
 
     def run(self):
@@ -135,7 +136,7 @@ class SerialPortWorker(threading.Thread):
                 try:
                     self._ser.write(self.ping)
                 except Exception as e:
-                    LOG.warning("[%s] ping write failed: %s", self.alias, e)
+                    LOG.warning("[%-6s] ping write failed: %s", self.com, e)
                     self._close_serial()
                     continue
                 self._last_ping = now
@@ -147,7 +148,7 @@ class SerialPortWorker(threading.Thread):
                     try:
                         self._ser.write(payload)
                     except Exception as e:
-                        LOG.warning("[%s] write failed: %s", self.alias, e)
+                        LOG.warning("[%-6s] write failed: %s", self.com, e)
                         self._close_serial()
                         break
             except queue.Empty:
@@ -159,21 +160,20 @@ class SerialPortWorker(threading.Thread):
                 if line:
                     self._last_ok = now
                     if self._on_rx:
-                        self._on_rx(line, self.alias)
+                        self._on_rx(line, self.com)
             except SerialException as e:
-                LOG.warning("[%s] read failed: %s", self.alias, e)
+                LOG.warning("[%-6s] read failed: %s", self.com, e)
                 self._close_serial()
                 continue
 
             # Stall watchdog
             if (now - self._last_ok) > STALL_RESET_S:
                 self._soft_reset()
-                # If still closed, next loop will reopen
+                # Next loop will reopen if needed
 
 class SerialManager:
     """
-    One worker per **COM port**, many aliases may map to the same worker.
-    Writes accept either an alias or a COM path; we resolve to the worker.
+    ONE worker per COM. Many aliases can map to a single COM.
     """
     def __init__(self):
         self._lock = threading.Lock()
@@ -184,23 +184,21 @@ class SerialManager:
                  on_rx: Optional[Callable[[bytes,str],None]] = None,
                  vid: Optional[int]=None, pid: Optional[int]=None):
         with self._lock:
-            # Record/refresh mapping
-            self._alias_to_port[alias] = com
-            # Start exactly one worker per COM
+            self._alias_to_port[alias] = com  # map/refresh alias→COM
             if com not in self._port_workers:
-                w = SerialPortWorker(name=com, com=com, baud=baud, on_rx=on_rx, vid=vid, pid=pid)
+                w = SerialPortWorker(com=com, baud=baud, on_rx=on_rx, vid=vid, pid=pid)
                 self._port_workers[com] = w
                 w.start()
+                LOG.debug("alias '%s' mapped to NEW worker for %s", alias, com)
+            else:
+                LOG.debug("alias '%s' mapped to EXISTING worker for %s", alias, com)
 
     def _resolve_worker(self, alias_or_com: str) -> Optional[SerialPortWorker]:
         with self._lock:
             com = self._alias_to_port.get(alias_or_com)
-            if not com:
-                # maybe user passed the COM directly
-                com = alias_or_com if _COM_RE.match(alias_or_com or "") else None
-            if not com:
-                return None
-            return self._port_workers.get(com)
+            if not com and _COM_RE.match(alias_or_com or ""):
+                com = alias_or_com
+            return self._port_workers.get(com) if com else None
 
     def write(self, alias_or_com: str, data: bytes) -> bool:
         w = self._resolve_worker(alias_or_com)

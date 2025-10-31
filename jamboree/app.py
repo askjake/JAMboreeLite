@@ -1,6 +1,5 @@
-# --- jamboree/app.py ---
-"""Flask entry point – serve HTML & JSON APIs."""
-import logging, socket, os, time
+# jamboree/app.py
+import logging, socket, os
 from flask import Flask, jsonify, send_from_directory, request, current_app
 
 logging.basicConfig(
@@ -8,16 +7,14 @@ logging.basicConfig(
     format='[%(levelname)s] %(asctime)s - %(name)s - %(message)s'
 )
 
-from .whodis import run as whodis_run
 from .paths import STATIC_DIR
 from .stb_store import store
 from .routes_sgs import bp_sgs
 
-# Create serial manager BEFORE importing controller/serial_bridge
-from .serial_manager import SerialManager
-serial_mgr = SerialManager()
+# Import the shared serial manager from a neutral module (no circulars)
+from .serial_hub import serial_mgr
 
-from .controller import Controller
+from .controller import Controller  # safe now; serial_bridge won't import app
 
 app = Flask(__name__, static_folder=str(STATIC_DIR))
 app.register_blueprint(bp_sgs)
@@ -42,11 +39,6 @@ def json_error(e):
     current_app.logger.exception(e)
     return jsonify(ok=False, msg=str(e)), code
 
-@app.route("/whodis")
-def whodis_route():
-    out = whodis_run()
-    return jsonify({"result": out})
-
 @app.route("/")
 def remote_page():
     return send_from_directory(STATIC_DIR, "JAMboRemote.html")
@@ -66,13 +58,15 @@ def get_stb_list():
 @app.route("/save-stb-list", methods=["POST"])
 def save_stb_list():
     payload = request.json or {}
-    store.save(payload)                 # writes base.txt
-    init_serial_from_base(payload)      # hot-apply alias→COM map
+    store.save(payload)            # persists base.txt
+    init_serial_from_base(payload) # hot-apply alias→COM map
     return jsonify({"success": True})
 
-# --- Bootstrap from disk once (store was loaded on import)
+# Bootstrap: seed from disk once (store loaded on import)
 init_serial_from_base({"stbs": store.all()})
 
 if __name__ == "__main__":
+    # Prevent a second Flask process that would fight for COM ports
+    os.environ.setdefault("FLASK_ENV", "production")
     os.environ.setdefault("FLASK_RUN_FROM_CLI", "false")
     app.run(host="0.0.0.0", port=5003)
