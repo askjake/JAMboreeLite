@@ -350,9 +350,9 @@ void parseInput(String input) {
 
   /* -------- Format B: remoteNum buttonNum action --------
      Enhancements:
-       • action == "reset" → per-remote reset (buttonNum ignored, 99 still accepted)
+       • action == "reset" → per-remote reset (buttonNum ignored, 100 still accepted)
        • action == "allup" → release all buttons (buttonNum ignored, 86 still accepted)
-       • buttonNum == 99   → per-remote reset (consistent with "action=reset")
+       • buttonNum == 100   → per-remote reset (consistent with "action=reset")
        • buttonNum == 86   → release all buttons (action ignored)
   */
   if (ntok == 3) {
@@ -364,7 +364,7 @@ void parseInput(String input) {
     if (action == "allup" || buttonNum == 86) { releaseAllButtons(remoteNum); return; }
 
     // Unified "reset" (per-remote)
-    if (action == "reset" || buttonNum == 99) {
+    if (action == "reset" || buttonNum == 100) {
       int delayMs = 500;
       if (debugOn) { Serial.print("[RST] per-remote via Format B, R="); Serial.println(remoteNum); }
       resetRemote(remoteNum, delayMs);
