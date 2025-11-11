@@ -114,7 +114,7 @@ class Controller:
         self.handle_auto_remote(remote, stb_name, "sat", 3010)
 
         # 2 · DVR & Guide down together via DART
-        time.sleep(0.10)
+        time.sleep(3.20)
         self.dart(stb_name, "dvr", "down")
         time.sleep(0.05)
         self.dart(stb_name, "guide", "down")
@@ -127,3 +127,4 @@ class Controller:
         self.dart(stb_name, "guide", "up")
 
         return {"unpaired": stb_name, "ts": datetime.now(timezone.utc).isoformat()}
+
