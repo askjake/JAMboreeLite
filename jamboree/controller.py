@@ -111,10 +111,13 @@ class Controller:
 
         # Use /auto for SAT (allows SGS path if present), then /dart for the simultaneous two-button chord.
         # 1 · SAT hold 3 s
-        self.handle_auto_remote(remote, stb_name, "sat", 3010)
+        #self.handle_auto_remote(remote, stb_name, "sat", 3010)
+        self.dart(stb_name, "sat", "down")
+        time.sleep(3.10)
+        self.dart(stb_name, "sat", "up")
 
         # 2 · DVR & Guide down together via DART
-        time.sleep(3.20)
+        time.sleep(0.10)
         self.dart(stb_name, "dvr", "down")
         time.sleep(0.05)
         self.dart(stb_name, "guide", "down")
@@ -127,4 +130,5 @@ class Controller:
         self.dart(stb_name, "guide", "up")
 
         return {"unpaired": stb_name, "ts": datetime.now(timezone.utc).isoformat()}
+
 
