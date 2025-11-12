@@ -23,7 +23,7 @@ class Controller:
             raise ValueError(f"STB '{stb_name}' not found in base.txt")
         remote = stb["remote"]
         # Format B: "<remote> 99 reset" → Arduino does per-remote reset
-        sent = send_quick_dart(stb_name, remote, "reset")
+        sent = send_quick_dart(stb_name, remote, "reset", "reset")
         return {"reset_line": sent, "ts": datetime.now(timezone.utc).isoformat()}
 
     def _all_up(self, stb_name: str) -> Dict:
@@ -82,7 +82,7 @@ class Controller:
         act = (action or "").lower()
 
         if act == "reset":
-            sent = send_quick_dart(stb_name, remote, "reset", "reset")
+            sent = send_rf(stb_name, remote, "reset")
             return {"dart_line": sent, "ts": datetime.now(timezone.utc).isoformat()}
 
         if act in ("allup", "all_up", "release"):
@@ -130,6 +130,7 @@ class Controller:
         self.dart(stb_name, "guide", "up")
 
         return {"unpaired": stb_name, "ts": datetime.now(timezone.utc).isoformat()}
+
 
 
 
