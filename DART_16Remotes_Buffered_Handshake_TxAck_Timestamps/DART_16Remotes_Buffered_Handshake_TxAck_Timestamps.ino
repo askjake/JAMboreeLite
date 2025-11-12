@@ -19,7 +19,7 @@ volatile byte  KEY_CMD = 0;                 // last key set by trigger
 
 volatile boolean clearInterruptFlag = false;
 volatile boolean initFlag           = true;
-bool     debugOn                    = false;
+bool     debugOn                    = true;
 
 /* ===================== Event FIFO (DOWN/UP) ===================== */
 #define EVENT_QUEUE_SIZE 2048
@@ -350,9 +350,9 @@ void parseInput(String input) {
 
   /* -------- Format B: remoteNum buttonNum action --------
      Enhancements:
-       • action == "reset" → per-remote reset (buttonNum ignored, 100 still accepted)
+       • action == "reset" → per-remote reset (buttonNum ignored, 99 still accepted)
        • action == "allup" → release all buttons (buttonNum ignored, 86 still accepted)
-       • buttonNum == 100   → per-remote reset (consistent with "action=reset")
+       • buttonNum == 99   → per-remote reset (consistent with "action=reset")
        • buttonNum == 86   → release all buttons (action ignored)
   */
   if (ntok == 3) {
@@ -364,10 +364,10 @@ void parseInput(String input) {
     if (action == "allup" || buttonNum == 86) { releaseAllButtons(remoteNum); return; }
 
     // Unified "reset" (per-remote)
-    if (action == "reset" || buttonNum == 100) {
+    if (action == "reset" || buttonNum == 99) {
       int delayMs = 500;
       if (debugOn) { Serial.print("[RST] per-remote via Format B, R="); Serial.println(remoteNum); }
-      resetRemote(remoteNum, delayMs);
+      resetRemote(remoteNum, "80");
       if (remoteNum>=1 && remoteNum<=16) sm[remoteNum-1] = RemoteSM{};
       return;
     }
@@ -476,7 +476,7 @@ void resetRemotes() {
 }
 
 void resetRemote(int remoteNum, int delayMs) {
-  int pin = convertNumToPin(remoteNum);
+  int pin = RESET_PIN;
   if (pin < 0) { if (debugOn) Serial.println("[RST] invalid remote"); return; }
   if (debugOn) { Serial.print("[RST] remote "); Serial.print(remoteNum); Serial.print(" for "); Serial.print(delayMs); Serial.println(" ms"); }
   digitalWrite(pin, LOW);
