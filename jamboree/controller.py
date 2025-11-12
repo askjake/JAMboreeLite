@@ -82,7 +82,7 @@ class Controller:
         act = (action or "").lower()
 
         if act == "reset":
-            sent = send_rf(stb_name, remote, "reset")
+            sent = send_rf(stb_name, remote, "reset", "80")
             return {"dart_line": sent, "ts": datetime.now(timezone.utc).isoformat()}
 
         if act in ("allup", "all_up", "release"):
@@ -130,6 +130,7 @@ class Controller:
         self.dart(stb_name, "guide", "up")
 
         return {"unpaired": stb_name, "ts": datetime.now(timezone.utc).isoformat()}
+
 
 
 
