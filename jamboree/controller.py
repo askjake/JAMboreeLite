@@ -118,19 +118,20 @@ class Controller:
         self.dart(stb_name, "sat", "up")
 
         # 2 · DVR & Guide down together via DART
-        time.sleep(0.10)
+        time.sleep(0.20)
         self.dart(stb_name, "dvr", "down")
-        time.sleep(0.05)
+        time.sleep(0.1)
         self.dart(stb_name, "guide", "down")
 
-        time.sleep(3.10)
+        time.sleep(3.50)
 
         # 3 · release both
         self.dart(stb_name, "dvr", "up")
-        time.sleep(0.05)
+        time.sleep(0.1)
         self.dart(stb_name, "guide", "up")
 
         return {"unpaired": stb_name, "ts": datetime.now(timezone.utc).isoformat()}
+
 
 
 
