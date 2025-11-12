@@ -149,7 +149,7 @@ void setup() {
   pinMode(RESET_PIN, OUTPUT); digitalWrite(RESET_PIN, HIGH);
 
   Serial.println("DART (16 remotes) — unified reset for Format A & B, unattended UP enforcement, TX+ACK confirm, timestamped logs");
-  Serial.println("Jacob Montgomery - Spreading the JAM 2025-11-11a");
+  Serial.println("Jacob Montgomery - Spreading the JAM 2025-11-12");
   Serial.flush();
 }
 
