@@ -124,7 +124,7 @@ button_id_to_number = {
     'skip forward': '16',
     'dvr_guide': '42',
     'pair': 'pair',
-    'reset': '100',
+    'reset': '99',
     'allup': '86'
     
 
@@ -227,5 +227,6 @@ sgs_commands = {
     '44': 'PiP Toggle'
 
 }
+
 
 
