@@ -1,11 +1,66 @@
-# jamboree/app.py
+"""
+JAMboreeLite Flask Application
+
+Main Flask application entry point for JAMboreeLite - a headless remote control
+system for DISH/Sling set-top boxes supporting both RF/DART and SGS protocols.
+
+This module initializes the Flask web server, registers routes, and coordinates
+between the Controller (business logic), serial_manager (DART communication),
+and SGS bridge (network communication).
+
+Key Features:
+    - Web UI for remote control (/JAMboRemote.html)
+    - STB configuration management (/settops)
+    - RESTful API for automation
+    - Dual protocol support (RF and SGS)
+    - Automatic STB initialization from base.txt
+    - Real-time serial port management
+
+Architecture:
+    Flask App (app.py)
+        ├── Controller (controller.py) - Command orchestration
+        │   ├── Serial Bridge (serial_bridge.py) - RF/DART commands
+        │   │   └── Serial Manager (serial_manager.py) - Port management
+        │   └── SGS Bridge (sgs_bridge.py) - Network commands
+        │       └── SGS Lib (sgs_lib.py) - Protocol implementation
+        └── STB Store (stb_store.py) - Configuration persistence
+
+Routes:
+    GET  /                      Main remote control page
+    GET  /settops               STB configuration page
+    GET  /hostname              Get server hostname
+    GET  /get-stb-list          Get all STB configurations
+    POST /save-stb-list         Save STB configurations
+    GET  /auto/<params>         Auto remote command (legacy)
+    GET  /dart/<stb>/<btn>/<act> DART command (Quick-DART)
+    POST /unpair/<stb>          Unpair remote sequence
+    GET  /whodis                Easter egg endpoint
+
+Environment:
+    FLASK_ENV: Set to production to disable debug mode
+    FLASK_RUN_FROM_CLI: Internal Flask flag
+    
+Usage:
+    # Development
+    python -m jamboree.app
+    
+    # Production
+    FLASK_ENV=production python -m jamboree.app
+    
+    # Custom port
+    Edit app.run() at bottom of file
+
+Author: Jacob Montgomery (askjake)
+Date: 2025-2026
+Version: 2.0 (Refactored with Security Enhancements)
+"""
+
 import logging, socket, os
 from flask import Flask, jsonify, send_from_directory, request, current_app
 
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='[%(levelname)s] %(asctime)s - %(name)s - %(message)s'
-)
+# Use centralized logging configuration
+from .core.logging_config import setup_logging
+setup_logging(level=logging.DEBUG)
 
 from .paths import STATIC_DIR
 from .stb_store import store

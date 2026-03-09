@@ -50,6 +50,14 @@ DEFAULT_RECEIVER       = "R0000000000-00"
 
 from typing import Dict, Any
 
+# Import secure credential manager
+try:
+    from .core.credentials import CredentialManager
+    CREDENTIALS_MODULE_AVAILABLE = True
+except ImportError:
+    CREDENTIALS_MODULE_AVAILABLE = False
+    logging.warning("core.credentials module not found - using base.txt only")
+
 def resolve_sgs_ip(alias: str, cfg: Dict[str, Any]) -> str:
     """
     Return the IP that should receive an SGS request for `alias`.

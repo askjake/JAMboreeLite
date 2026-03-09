@@ -1,0 +1,13 @@
+# JAMboreeLite Dependencies (Updated with Security Enhancements)
+
+# Core dependencies
+flask>=3.0.0
+pyserial>=3.5
+paramiko>=3.0.0
+requests>=2.31.0
+
+# Security: Secure credential storage
+keyring==24.2.0
+
+# Optional but recommended
+colorama>=0.4.6  # Already in venv

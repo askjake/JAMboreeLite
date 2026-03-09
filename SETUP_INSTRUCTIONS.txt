@@ -1,0 +1,43 @@
+JAMboreeLite - Security Refactoring Setup Instructions
+========================================================================
+
+QUICK START:
+1. Install keyring: run install_keyring.bat (Windows) or pip install keyring
+2. Verify: python migrate_credentials.py --verify
+3. Migrate: python migrate_credentials.py
+4. Test: python -m jamboree.app
+
+WHAT CHANGED:
+- Credentials now stored in OS keyring (Windows Credential Manager, etc.)
+- Fallback to base.txt for backward compatibility
+- New core/ module for security features
+- Migration script for safe transition
+
+DETAILED STEPS:
+
+Step 1: Install Keyring
+  Windows: Double-click install_keyring.bat
+  Linux/Mac: pip install keyring==24.2.0
+
+Step 2: Verify What Will Be Migrated
+  python migrate_credentials.py --verify
+
+Step 3: Migrate Credentials
+  Safe mode (keeps plaintext): python migrate_credentials.py
+  Full mode (removes plaintext): python migrate_credentials.py --remove-plaintext
+
+Step 4: Verify Migration
+  Check for base.txt.backup file
+  Look for "Successfully migrated" message
+  Test: python -c "from jamboree.core.credentials import CredentialManager; print(CredentialManager.get_credentials('Hopper-01'))"
+
+Step 5: Run Application
+  python -m jamboree.app
+  Check logs for "Retrieved credentials from keyring"
+
+TROUBLESHOOTING:
+- If keyring fails, app falls back to base.txt automatically
+- Restore from base.txt.backup if needed
+- All .backup files can be used for rollback
+
+See CHANGES.md for complete list of modifications.

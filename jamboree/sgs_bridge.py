@@ -36,6 +36,7 @@ from requests.exceptions import SSLError
 from .commands import get_sgs_codes
 from .sgs_lib import sgs_get_receiver_id, DEFAULT_CID
 from .stb_store import store
+from .core.credentials import CredentialManager
 
 # ──────────────────────────────────────────────────────────────────────────────
 #  Configuration / Globals
@@ -135,10 +136,14 @@ def get_or_attach_cid(joey_rid: str, hopper_ip: str, *, verbose=False) -> int:
     rec = CID_CACHE.get(key)
     if rec and (time.time() - rec[1] < CACHE_TTL):
         return rec[0]
-    # find creds in base
+    # find creds in base - try keyring first, fallback to plaintext
+    base_data = {"stbs": store.all()}
     for alias, info in store.all().items():
-        if info.get("ip") == hopper_ip and info.get("lname") and info.get("passwd"):
-            return _attach(joey_rid, hopper_ip, (info["lname"], info["passwd"]), verbose=verbose)
+        if info.get("ip") == hopper_ip:
+            # Try secure keyring first
+            username, password = CredentialManager.get_credentials(alias, base_data)
+            if username and password:
+                return _attach(joey_rid, hopper_ip, (username, password), verbose=verbose)
     raise ValueError(f"No credentials for Hopper {hopper_ip}; pair first.")
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -179,8 +184,11 @@ def send_sgs(
 
     extra = []
     tgt = store.get(target_name) or {}
-    if tgt.get("lname") and tgt.get("passwd"):
-        extra = ["--prod", "--login", tgt["lname"], "--passwd", tgt["passwd"]]
+    # Get credentials from keyring or fallback to base.txt
+    base_data = {"stbs": store.all()}
+    username, password = CredentialManager.get_credentials(target_name, base_data)
+    if username and password:
+        extra = ["--prod", "--login", username, "--passwd", password]
 
     cmd = [sys.executable, "-m", "jamboree.sgs_remote", "-n", target_name, "-i", target_ip, *extra, json.dumps(payload)]
 
@@ -190,7 +198,7 @@ def send_sgs(
         logging.debug(" → IP=%s RID=%s CID=%s key=%s", target_ip, stb_rid, cid if cid else DEFAULT_CID, key_name)
         logging.debug(" → payload: %s", json.dumps(payload))
         proto = "https" if cid else "http"
-        curl_dbg = f"curl -k -u {tgt.get('lname','USER')}:{tgt.get('passwd','PASS')} -X POST {proto}://{target_ip}/www/sgs -d '{json.dumps(payload)}'"
+        curl_dbg = f"curl -k -u {username}:{password} -X POST {proto}://{target_ip}/www/sgs -d '{json.dumps(payload)}'"
         logging.debug(" → curl: %s", curl_dbg)
         logging.debug(" → cmd: %s", " ".join(cmd))
 

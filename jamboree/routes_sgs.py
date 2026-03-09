@@ -6,6 +6,7 @@ from .sgs_lib import (
     STB, resolve_sgs_ip, sgs_load_base, sgs_save_base
 )
 from .stb_store import store        # ← NEW
+from .core.credentials import CredentialManager  # ← SECURITY UPDATE
 bp_sgs = Blueprint("sgs", __name__, url_prefix="/sgs")
 
 # helper --------------------------------------------------------------
@@ -132,20 +133,41 @@ def pair_complete():
     ok = resp and resp.get("result") == 1
     if ok:
         try:
+            # Store credentials securely in keyring
+            username = resp.get("name")
+            password = resp.get("passwd")
+            
+            # Determine the correct alias to store under (Hopper for Joeys)
+            store_alias = alias
+            stb_info = store.get(alias) if alias else None
+            if stb_info and stb_info.get("role") == "joey":
+                hopper_alias = stb_info.get("host")
+                if hopper_alias:
+                    store_alias = hopper_alias
+                    logging.info(f"Joey detected, storing credentials under Hopper: {hopper_alias}")
+            
+            # Store in keyring (secure)
+            if username and password:
+                success = CredentialManager.store_credentials(store_alias, username, password)
+                if success:
+                    logging.info(f"Stored credentials for '{store_alias}' in OS keyring")
+                else:
+                    logging.warning(f"Failed to store credentials in keyring for '{store_alias}'")
+            
+            # Also update base.txt for backward compatibility (optional)
             base = sgs_load_base()
             logging.debug("Loaded base.txt to store pairing creds")
-
-            # always write creds to the Hopper row
-            hopper_alias = store.get(alias)["host"] if alias else None
+            
             for alias_key, info in base.get("stbs", {}).items():
-                if alias_key == hopper_alias:
-                    info["lname"]  = resp["name"]
-                    info["passwd"] = resp["passwd"]
+                if alias_key == store_alias:
+                    info["lname"]  = username
+                    info["passwd"] = password
                     sgs_save_base(base)
-                    logging.info("Updated creds for Hopper '%s'", alias_key)
+                    logging.info(f"Updated plaintext creds in base.txt for '{alias_key}' (fallback)")
                     break
+                    
         except Exception as e:
-            logging.error("Error saving to base.txt: %s", e)
+            logging.error("Error saving credentials: %s", e)
 
     status_code = 200 if ok else 400
     logging.info("pair_complete result for alias='%s': %s", alias or data.get("ip"), ok)
