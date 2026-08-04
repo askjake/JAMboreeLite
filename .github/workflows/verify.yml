@@ -74,59 +74,6 @@ jobs:
           assert sketch_text.count(broken) == 1, 'unexpected DART reset source'
           sketch_path.write_text(sketch_text.replace(broken, fixed), encoding='utf-8')
           Path('patches/fix-dart-reset-type.patch').unlink(missing_ok=True)
-
-          final_workflow = r'''name: verify
-          on:
-            pull_request:
-            push:
-              branches: [main, 'agent/**']
-
-          jobs:
-            python:
-              runs-on: ubuntu-latest
-              steps:
-                - uses: actions/checkout@v4
-                - uses: actions/setup-python@v5
-                  with:
-                    python-version: '3.11'
-                - run: python -m pip install flask keyring keyrings.alt numpy opencv-python-headless paramiko Pillow pytesseract pyserial requests pytest
-                - run: python -m compileall -q jamboree tests
-                - name: Run regression suite with an isolated CI keyring
-                  shell: bash
-                  run: |
-                    mkdir -p "$RUNNER_TEMP/keyring"
-                    PYTHON_KEYRING_BACKEND=keyrings.alt.file.PlaintextKeyring XDG_DATA_HOME="$RUNNER_TEMP/keyring" PYTHONPATH=. pytest -q
-                - name: Verify the DART reset uses an integer duration
-                  run: |
-                    grep -q 'resetRemote(remoteNum, 80);' DART_16Remotes_Buffered_Handshake_TxAck_Timestamps/DART_16Remotes_Buffered_Handshake_TxAck_Timestamps.ino
-                    ! grep -q 'resetRemote(remoteNum, "80");' DART_16Remotes_Buffered_Handshake_TxAck_Timestamps/DART_16Remotes_Buffered_Handshake_TxAck_Timestamps.ino
-                - name: Verify no credential literals in changed runtime files
-                  run: |
-                    ! grep -RInE 'passwd\s*[=:]\s*["'"'][^"'"']+|password\s*[=:]\s*["'"'][^"'"']+' jamboree tests
-
-            windows-installer:
-              runs-on: windows-latest
-              steps:
-                - uses: actions/checkout@v4
-                - uses: actions/setup-python@v5
-                  with:
-                    python-version: '3.11'
-                - name: Install from the checked-out source tree
-                  shell: cmd
-                  run: |
-                    set "JAMBOREE_INSTALL_DIR=%RUNNER_TEMP%\JAMboreeLite"
-                    set "JAMBOREE_SKIP_SHORTCUTS=1"
-                    set "JAMBOREE_NO_PAUSE=1"
-                    call install_jamboreeLite.cmd
-                    if errorlevel 1 exit /b 1
-                    "%RUNNER_TEMP%\JAMboreeLite\venv\Scripts\python.exe" -c "import sys; sys.path.insert(0, r'%RUNNER_TEMP%\JAMboreeLite'); import jamboree.app; print('Windows installer smoke test passed')"
-          '''
-          lines = final_workflow.splitlines()
-          final_workflow = '\n'.join(
-              line[10:] if line.startswith('          ') else line
-              for line in lines
-          ).lstrip()
-          Path('.github/workflows/verify.yml').write_text(final_workflow, encoding='utf-8')
           PY
 
       - name: Install integration test dependencies
@@ -153,6 +100,7 @@ jobs:
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git checkout HEAD -- .github/workflows/verify.yml .github/workflows/apply-agent-payload.yml
           git add -A
           git diff --cached --check
           git commit -m 'feat: integrate aBot SGS recovery and autopair'
