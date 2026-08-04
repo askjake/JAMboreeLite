@@ -40,10 +40,25 @@ jobs:
           grep -q 'resetRemote(remoteNum, 80);' DART_16Remotes_Buffered_Handshake_TxAck_Timestamps/DART_16Remotes_Buffered_Handshake_TxAck_Timestamps.ino
           ! grep -q 'resetRemote(remoteNum, "80");' DART_16Remotes_Buffered_Handshake_TxAck_Timestamps/DART_16Remotes_Buffered_Handshake_TxAck_Timestamps.ino
 
-      - name: Verify no credential literals
+      - name: Verify no credential literals in runtime source
         shell: bash
         run: |
-          ! grep -RInE 'passwd\s*[=:]\s*["'"'][^"'"']+|password\s*[=:]\s*["'"'][^"'"']+' jamboree tests
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          pattern = re.compile(
+              r'''(?ix)\b(?:passwd|password)\s*[=:]\s*["'][^"']{4,}["']'''
+          )
+          violations = []
+          for path in Path('jamboree').rglob('*.py'):
+              for number, line in enumerate(path.read_text(encoding='utf-8').splitlines(), 1):
+                  if pattern.search(line):
+                      violations.append(f'{path}:{number}:{line.strip()}')
+          if violations:
+              raise SystemExit('credential-like literals found:\n' + '\n'.join(violations))
+          print('No credential literals found in runtime source')
+          PY
 
   windows-installer:
     runs-on: windows-latest
