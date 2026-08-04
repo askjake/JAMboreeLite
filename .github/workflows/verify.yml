@@ -1,107 +1,70 @@
-name: apply-and-verify-integration
+name: verify
+
 on:
   pull_request:
-    branches: [main]
-
-permissions:
-  contents: write
+  push:
+    branches:
+      - main
+      - 'agent/**'
 
 jobs:
-  apply-and-test:
-    if: github.event.pull_request.head.ref == 'agent/jamboreelite-transport-hardening-20260804'
+  python:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: agent/jamboreelite-transport-hardening-20260804
-          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Reassemble and verify the reviewed payload
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -f .agent_payload/chunk00.00
-          cat .agent_payload/chunk* | base64 -d > /tmp/payload.tar.gz
-          echo '3bb56be420307188fe39e530b0f239fb87a011e922e915ba86cf426b6d9a0eb6  /tmp/payload.tar.gz' | sha256sum -c -
-          tar -tzf /tmp/payload.tar.gz
-          tar -xzf /tmp/payload.tar.gz -C .
-          rm -rf .agent_payload
-          rm -f .github/workflows/apply-agent-payload.yml
+      - name: Install test dependencies
+        run: >-
+          python -m pip install
+          flask keyring keyrings.alt numpy opencv-python-headless
+          paramiko Pillow pytesseract pyserial requests pytest
 
-      - name: Apply compatibility fixes found by the full repository suite
-        shell: bash
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          from pathlib import Path
-
-          serial_path = Path('jamboree/serial_bridge.py')
-          serial_text = serial_path.read_text(encoding='utf-8')
-          old = 'readiness = "open and writable" if strict else "configured"'
-          new = 'readiness = "open/ready and writable" if strict else "configured"'
-          assert serial_text.count(old) == 1, 'unexpected serial readiness source'
-          serial_path.write_text(serial_text.replace(old, new), encoding='utf-8')
-
-          controller_path = Path('jamboree/controller.py')
-          controller_text = controller_path.read_text(encoding='utf-8')
-          marker = 'LOG = logging.getLogger(__name__)\n'
-          alias = 'classify_sgs_failure = ip_recovery.classify_sgs_failure\n'
-          assert controller_text.count(marker) == 1, 'unexpected controller logger source'
-          if alias not in controller_text:
-              controller_text = controller_text.replace(marker, marker + '\n' + alias, 1)
-
-          call = 'ip_recovery.classify_sgs_failure(first_exc)'
-          assert controller_text.count(call) == 1, 'unexpected SGS classification source'
-          controller_text = controller_text.replace(call, 'classify_sgs_failure(first_exc)', 1)
-
-          legacy_kind = 'verdict.kind,'
-          safe_kind = 'getattr(verdict, "kind", getattr(verdict, "reason", "unknown")),'
-          assert controller_text.count(legacy_kind) == 1, 'unexpected failure-kind logging source'
-          controller_text = controller_text.replace(legacy_kind, safe_kind, 1)
-          controller_path.write_text(controller_text, encoding='utf-8')
-
-          sketch_path = Path(
-              'DART_16Remotes_Buffered_Handshake_TxAck_Timestamps/'
-              'DART_16Remotes_Buffered_Handshake_TxAck_Timestamps.ino'
-          )
-          sketch_text = sketch_path.read_text(encoding='utf-8')
-          broken = 'resetRemote(remoteNum, "80");'
-          fixed = 'resetRemote(remoteNum, 80);'
-          assert sketch_text.count(broken) == 1, 'unexpected DART reset source'
-          sketch_path.write_text(sketch_text.replace(broken, fixed), encoding='utf-8')
-          Path('patches/fix-dart-reset-type.patch').unlink(missing_ok=True)
-          PY
-
-      - name: Install integration test dependencies
-        run: python -m pip install flask keyring keyrings.alt paramiko pyserial requests pytest numpy opencv-python-headless Pillow pytesseract
-
-      - name: Compile integrated source
+      - name: Compile source
         run: python -m compileall -q jamboree tests
 
-      - name: Verify the DART reset source
+      - name: Run regression suite with isolated keyring
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/keyring"
+          PYTHON_KEYRING_BACKEND=keyrings.alt.file.PlaintextKeyring \
+          XDG_DATA_HOME="$RUNNER_TEMP/keyring" \
+          PYTHONPATH=. pytest -q
+
+      - name: Verify DART reset duration type
         shell: bash
         run: |
           grep -q 'resetRemote(remoteNum, 80);' DART_16Remotes_Buffered_Handshake_TxAck_Timestamps/DART_16Remotes_Buffered_Handshake_TxAck_Timestamps.ino
           ! grep -q 'resetRemote(remoteNum, "80");' DART_16Remotes_Buffered_Handshake_TxAck_Timestamps/DART_16Remotes_Buffered_Handshake_TxAck_Timestamps.ino
 
-      - name: Run integrated regression suite
+      - name: Verify no credential literals
         shell: bash
         run: |
-          mkdir -p "$RUNNER_TEMP/keyring"
-          PYTHON_KEYRING_BACKEND=keyrings.alt.file.PlaintextKeyring XDG_DATA_HOME="$RUNNER_TEMP/keyring" PYTHONPATH=. pytest -q
+          ! grep -RInE 'passwd\s*[=:]\s*["'"'][^"'"']+|password\s*[=:]\s*["'"'][^"'"']+' jamboree tests
 
-      - name: Commit the tested integration
-        shell: bash
+  windows-installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install from checked-out source tree
+        shell: cmd
         run: |
-          set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git checkout HEAD -- .github/workflows/verify.yml .github/workflows/apply-agent-payload.yml
-          git add -A
-          git diff --cached --check
-          git commit -m 'feat: integrate aBot SGS recovery and autopair'
-          git push origin HEAD:agent/jamboreelite-transport-hardening-20260804
+          set "JAMBOREE_INSTALL_DIR=%RUNNER_TEMP%\JAMboreeLite"
+          set "JAMBOREE_SKIP_SHORTCUTS=1"
+          set "JAMBOREE_NO_PAUSE=1"
+          call install_jamboreeLite.cmd
+          if errorlevel 1 exit /b 1
+
+      - name: Verify installed application
+        shell: cmd
+        run: |
+          cd /d "%RUNNER_TEMP%\JAMboreeLite"
+          "%RUNNER_TEMP%\JAMboreeLite\venv\Scripts\python.exe" -c "import jamboree.app; print('Windows installer smoke test passed')"
