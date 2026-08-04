@@ -2,8 +2,10 @@ name: apply-and-verify-integration
 on:
   pull_request:
     branches: [main]
+
 permissions:
   contents: write
+
 jobs:
   apply-and-test:
     if: github.event.pull_request.head.ref == 'agent/jamboreelite-transport-hardening-20260804'
@@ -13,9 +15,11 @@ jobs:
         with:
           ref: agent/jamboreelite-transport-hardening-20260804
           fetch-depth: 0
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
       - name: Reassemble and verify the reviewed payload
         shell: bash
         run: |
@@ -27,6 +31,7 @@ jobs:
           tar -xzf /tmp/payload.tar.gz -C .
           rm -rf .agent_payload
           rm -f .github/workflows/apply-agent-payload.yml
+
       - name: Apply compatibility fixes found by the full repository suite
         shell: bash
         run: |
@@ -48,12 +53,21 @@ jobs:
           assert controller_text.count(marker) == 1, 'unexpected controller logger source'
           if alias not in controller_text:
               controller_text = controller_text.replace(marker, marker + '\n' + alias, 1)
+
           call = 'ip_recovery.classify_sgs_failure(first_exc)'
           assert controller_text.count(call) == 1, 'unexpected SGS classification source'
           controller_text = controller_text.replace(call, 'classify_sgs_failure(first_exc)', 1)
+
+          legacy_kind = 'verdict.kind,'
+          safe_kind = 'getattr(verdict, "kind", getattr(verdict, "reason", "unknown")),'
+          assert controller_text.count(legacy_kind) == 1, 'unexpected failure-kind logging source'
+          controller_text = controller_text.replace(legacy_kind, safe_kind, 1)
           controller_path.write_text(controller_text, encoding='utf-8')
 
-          sketch_path = Path('DART_16Remotes_Buffered_Handshake_TxAck_Timestamps/DART_16Remotes_Buffered_Handshake_TxAck_Timestamps.ino')
+          sketch_path = Path(
+              'DART_16Remotes_Buffered_Handshake_TxAck_Timestamps/'
+              'DART_16Remotes_Buffered_Handshake_TxAck_Timestamps.ino'
+          )
           sketch_text = sketch_path.read_text(encoding='utf-8')
           broken = 'resetRemote(remoteNum, "80");'
           fixed = 'resetRemote(remoteNum, 80);'
@@ -61,11 +75,12 @@ jobs:
           sketch_path.write_text(sketch_text.replace(broken, fixed), encoding='utf-8')
           Path('patches/fix-dart-reset-type.patch').unlink(missing_ok=True)
 
-          final_workflow = '''name: verify
+          final_workflow = r'''name: verify
           on:
             pull_request:
             push:
               branches: [main, 'agent/**']
+
           jobs:
             python:
               runs-on: ubuntu-latest
@@ -74,7 +89,7 @@ jobs:
                 - uses: actions/setup-python@v5
                   with:
                     python-version: '3.11'
-                - run: python -m pip install flask keyring keyrings.alt numpy opencv-python-headless paramiko pytesseract pyserial requests pytest
+                - run: python -m pip install flask keyring keyrings.alt numpy opencv-python-headless paramiko Pillow pytesseract pyserial requests pytest
                 - run: python -m compileall -q jamboree tests
                 - name: Run regression suite with an isolated CI keyring
                   shell: bash
@@ -87,24 +102,51 @@ jobs:
                     ! grep -q 'resetRemote(remoteNum, "80");' DART_16Remotes_Buffered_Handshake_TxAck_Timestamps/DART_16Remotes_Buffered_Handshake_TxAck_Timestamps.ino
                 - name: Verify no credential literals in changed runtime files
                   run: |
-                    ! grep -RInE 'passwd\\s*[=:]\\s*["'"'][^"'"']+|password\\s*[=:]\\s*["'"'][^"'"']+' jamboree tests
+                    ! grep -RInE 'passwd\s*[=:]\s*["'"'][^"'"']+|password\s*[=:]\s*["'"'][^"'"']+' jamboree tests
+
+            windows-installer:
+              runs-on: windows-latest
+              steps:
+                - uses: actions/checkout@v4
+                - uses: actions/setup-python@v5
+                  with:
+                    python-version: '3.11'
+                - name: Install from the checked-out source tree
+                  shell: cmd
+                  run: |
+                    set "JAMBOREE_INSTALL_DIR=%RUNNER_TEMP%\JAMboreeLite"
+                    set "JAMBOREE_SKIP_SHORTCUTS=1"
+                    set "JAMBOREE_NO_PAUSE=1"
+                    call install_jamboreeLite.cmd
+                    if errorlevel 1 exit /b 1
+                    "%RUNNER_TEMP%\JAMboreeLite\venv\Scripts\python.exe" -c "import sys; sys.path.insert(0, r'%RUNNER_TEMP%\JAMboreeLite'); import jamboree.app; print('Windows installer smoke test passed')"
           '''
+          lines = final_workflow.splitlines()
+          final_workflow = '\n'.join(
+              line[10:] if line.startswith('          ') else line
+              for line in lines
+          ).lstrip()
           Path('.github/workflows/verify.yml').write_text(final_workflow, encoding='utf-8')
           PY
+
       - name: Install integration test dependencies
-        run: python -m pip install flask keyring keyrings.alt paramiko pyserial requests pytest numpy opencv-python-headless pytesseract
+        run: python -m pip install flask keyring keyrings.alt paramiko pyserial requests pytest numpy opencv-python-headless Pillow pytesseract
+
       - name: Compile integrated source
         run: python -m compileall -q jamboree tests
+
       - name: Verify the DART reset source
         shell: bash
         run: |
           grep -q 'resetRemote(remoteNum, 80);' DART_16Remotes_Buffered_Handshake_TxAck_Timestamps/DART_16Remotes_Buffered_Handshake_TxAck_Timestamps.ino
           ! grep -q 'resetRemote(remoteNum, "80");' DART_16Remotes_Buffered_Handshake_TxAck_Timestamps/DART_16Remotes_Buffered_Handshake_TxAck_Timestamps.ino
+
       - name: Run integrated regression suite
         shell: bash
         run: |
           mkdir -p "$RUNNER_TEMP/keyring"
           PYTHON_KEYRING_BACKEND=keyrings.alt.file.PlaintextKeyring XDG_DATA_HOME="$RUNNER_TEMP/keyring" PYTHONPATH=. pytest -q
+
       - name: Commit the tested integration
         shell: bash
         run: |
