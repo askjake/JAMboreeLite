@@ -1,5 +1,0 @@
---- a/DART_16Remotes_Buffered_Handshake_TxAck_Timestamps/DART_16Remotes_Buffered_Handshake_TxAck_Timestamps.ino
-+++ b/DART_16Remotes_Buffered_Handshake_TxAck_Timestamps/DART_16Remotes_Buffered_Handshake_TxAck_Timestamps.ino
-@@
--      resetRemote(remoteNum, "80");
-+      resetRemote(remoteNum, 80);
