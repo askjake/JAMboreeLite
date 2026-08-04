@@ -1,9 +1,22 @@
 [project]
 name = "jamboree"
-version = "0.1.0"
-dependencies = ["flask", "pyserial", "paramiko", "requests"]
+version = "0.2.0"
 requires-python = ">=3.11"
+dependencies = [
+  "flask>=3.0,<4",
+  "keyring>=24.2,<26",
+  "paramiko>=3.4,<5",
+  "pyserial>=3.5,<4",
+  "requests>=2.31,<3",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8,<10"]
 
 [build-system]
-requires = ["setuptools>=61"]
+requires = ["setuptools>=69"]
 build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
