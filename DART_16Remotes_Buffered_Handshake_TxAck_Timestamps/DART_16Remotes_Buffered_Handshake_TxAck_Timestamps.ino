@@ -367,7 +367,7 @@ void parseInput(String input) {
     if (action == "reset" || buttonNum == 99) {
       int delayMs = 500;
       if (debugOn) { Serial.print("[RST] per-remote via Format B, R="); Serial.println(remoteNum); }
-      resetRemote(remoteNum, "80");
+      resetRemote(remoteNum, 80);
       if (remoteNum>=1 && remoteNum<=16) sm[remoteNum-1] = RemoteSM{};
       return;
     }

@@ -1,154 +1,163 @@
-"""
-SGS bridge utilities – *JAMboreeLite*
-====================================
+"""Direct SGS transport for Hoppers and Joeys.
 
-End‑to‑end helper that hides every SGS detail for Hopper **and** Joey calls.
-It now mirrors the reference `sgs_lib.STB.query_secure()` behaviour so that
-**attach** works even on firmware that requires client‑certificate mutual‑TLS.
-
-Key points
-----------
-* **Pairing** continues to go through `/sgs_noauth` on the Hopper – the PIN will
-  always appear on the Hopper’s TV (spec behaviour).
-* **attach** now:
-  1. Tries `https://<hopper>/www/sgs` **with client cert + digest‑auth**.
-  2. If the STB demands a client cert and the files are missing, we auto‑fallback
-     to the unencrypted `http://<hopper>/www/sgs` route (some dev images allow
-     that) and recognise the spec “result 20” error.
-* **remote_key** logic unchanged – Joey calls include the fresh `cid`.
-* Every step logs a ready‑to‑paste *curl* line for Postman.
+No credential is placed in a subprocess argument or debug curl command.  The
+client tries mutual-TLS/digest first when credentials exist, then the engineering
+HTTP endpoints supported by some lab images.
 """
 from __future__ import annotations
 
 import json
 import logging
-import shutil
-import subprocess
-import sys
+import os
 import time
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Dict, Optional, Tuple
 
 import requests
 from requests.auth import HTTPDigestAuth
-from requests.exceptions import SSLError
 
 from .commands import get_sgs_codes
-from .sgs_lib import sgs_get_receiver_id, DEFAULT_CID
-from .stb_store import store
 from .core.credentials import CredentialManager
+from .sgs_lib import sgs_get_receiver_id
+from .stb_store import store
 
-# ──────────────────────────────────────────────────────────────────────────────
-#  Configuration / Globals
-# ──────────────────────────────────────────────────────────────────────────────
-
-SGS_REMOTE = shutil.which("sgs_remote.py") or Path(__file__).with_name("sgs_remote.py")
-if not Path(SGS_REMOTE).is_file():
-    logging.error("sgs_remote.py not found at %s", SGS_REMOTE)
-    sys.exit(1)
-
-# {(joey_rid, hopper_ip): (cid, epoch)}
+LOG = logging.getLogger(__name__)
+PACKAGE_DIR = Path(__file__).resolve().parent
+CERT_PEM = PACKAGE_DIR / "cert.pem"
+KEY_PEM = PACKAGE_DIR / "key.pem"
 CID_CACHE: Dict[Tuple[str, str], Tuple[int, float]] = {}
-CACHE_TTL = 150  # seconds – refresh cid after STB’s idle timeout
+CACHE_TTL_S = 150.0
 
-CERT_PEM = Path(__file__).with_name("cert.pem")
-KEY_PEM  = Path(__file__).with_name("key.pem")
-HAVE_CERT = CERT_PEM.is_file() and KEY_PEM.is_file()
 
-# ──────────────────────────────────────────────────────────────────────────────
-#  Helper: attach to a Joey via its Hopper
-# ──────────────────────────────────────────────────────────────────────────────
+def clear_cid_cache() -> None:
+    CID_CACHE.clear()
 
-def _attach_https(joey_rid: str, hopper_ip: str, creds: Tuple[str, str], *, verbose=False) -> int:
-    """HTTPS attach with digest‑auth and *optional* client cert."""
-    receiver = sgs_get_receiver_id()
-    url = f"https://{hopper_ip}/www/sgs"
-    payload = {
-        "command": "attach",
-        "receiver": receiver,
-        "stb": joey_rid,
-        "tv_id": 0,
-        "attr": 1,
+
+def _cert() -> Optional[Tuple[str, str]]:
+    if CERT_PEM.is_file() and KEY_PEM.is_file():
+        return str(CERT_PEM), str(KEY_PEM)
+    return None
+
+
+def _verify_setting() -> bool | str:
+    ca_bundle = os.getenv("JAMBOREE_SGS_CA_BUNDLE", "").strip()
+    if ca_bundle:
+        return ca_bundle
+    return os.getenv("JAMBOREE_SGS_VERIFY_TLS", "0").strip().lower() in {
+        "1", "true", "yes", "on"
     }
 
-    if verbose or logging.getLogger().isEnabledFor(logging.DEBUG):
-        curl_cmd = (
-            f"curl -k -u {creds[0]}:{creds[1]} -X POST {url} "
-            f"--cert {CERT_PEM} --key {KEY_PEM} -d '{json.dumps(payload)}'"
-            if HAVE_CERT else
-            f"curl -k -u {creds[0]}:{creds[1]} -X POST {url} -d '{json.dumps(payload)}'"
-        )
-        logging.debug("[ATTACH] %s", curl_cmd)
 
-    resp = requests.post(
-        url,
-        json=payload,
-        auth=HTTPDigestAuth(*creds),
-        timeout=5,
-        verify=False,
-        cert=(str(CERT_PEM), str(KEY_PEM)) if HAVE_CERT else None,
+def _credentials(alias: str) -> Optional[Tuple[str, str]]:
+    username, password = CredentialManager.get_credentials(alias, store.document())
+    return (username, password) if username and password else None
+
+
+def _post(
+    ip: str,
+    payload: dict,
+    *,
+    creds: Optional[Tuple[str, str]],
+    timeout: float = 7.0,
+) -> dict:
+    attempts: list[tuple[str, bool]] = []
+    if creds:
+        attempts.append((f"https://{ip}/www/sgs", True))
+    attempts.extend(
+        ((f"http://{ip}:8080/www/sgs", False), (f"http://{ip}/www/sgs", False))
     )
-    return resp
+    errors: list[str] = []
+    for url, secure in attempts:
+        try:
+            response = requests.post(
+                url,
+                json=payload,
+                headers={"Content-Type": "application/json"},
+                auth=HTTPDigestAuth(*creds) if creds else None,
+                verify=_verify_setting() if secure else True,
+                cert=_cert() if secure else None,
+                timeout=timeout,
+            )
+        except Exception as exc:
+            errors.append(f"{url}: {exc}")
+            continue
+        if response.status_code in (401, 403):
+            clear_cid_cache()
+            raise PermissionError(f"SGS authentication failed (HTTP {response.status_code})")
+        try:
+            data = response.json()
+        except ValueError:
+            errors.append(f"{url}: non-JSON HTTP {response.status_code}")
+            continue
+        if isinstance(data, dict) and data.get("result") == 1:
+            return data
+        errors.append(f"{url}: result={data.get('result') if isinstance(data, dict) else 'invalid'}")
+    raise RuntimeError("SGS request failed: " + "; ".join(errors))
 
 
-def _attach(joey_rid: str, hopper_ip: str, creds: Tuple[str, str], *, verbose=False) -> int:
-    """Attach wrapper that handles TLS cert‑required errors and fallback."""
+def _host_for(alias: str) -> tuple[str, dict, str, dict]:
+    info = store.get(alias) or {}
+    role = str(info.get("role", "hopper")).lower()
+    if role == "joey" or info.get("master_stb"):
+        host_alias = str(info.get("host") or info.get("master_stb") or "").strip()
+        host = store.get(host_alias) or {}
+        if not host_alias or not host.get("ip"):
+            raise ValueError(f"Joey {alias!r} has no valid host Hopper")
+        return alias, info, host_alias, host
+    return alias, info, alias, info
 
-    try:
-        resp = _attach_https(joey_rid, hopper_ip, creds, verbose=verbose)
-    except SSLError as e:
-        logging.warning("HTTPS attach failed – %s", e)
-        resp = None
 
-    if resp is None or resp.status_code in (495, 496, 497):
-        # optional HTTP fallback – not spec, but helpful on eng images
-        url = f"http://{hopper_ip}/www/sgs"
-        receiver = sgs_get_receiver_id()
-        payload = {
+def get_or_attach_cid(joey_rid: str, hopper_alias: str, hopper_ip: str) -> int:
+    key = (str(joey_rid), str(hopper_ip))
+    cached = CID_CACHE.get(key)
+    if cached and time.monotonic() - cached[1] < CACHE_TTL_S:
+        return cached[0]
+    creds = _credentials(hopper_alias)
+    if not creds:
+        raise PermissionError(f"No SGS credentials for Hopper {hopper_alias!r}; pair first")
+    data = _post(
+        hopper_ip,
+        {
             "command": "attach",
-            "receiver": receiver,
-            "stb": joey_rid,
+            "receiver": sgs_get_receiver_id(),
+            "stb": str(joey_rid),
             "tv_id": 0,
             "attr": 1,
-        }
-        if verbose or logging.getLogger().isEnabledFor(logging.DEBUG):
-            logging.debug("[ATTACH] falling back to HTTP (digest‑auth)")
-            curl_cmd = f"curl -u {creds[0]}:{creds[1]} -X POST {url} -d '{json.dumps(payload)}'"
-            logging.debug("[ATTACH] %s", curl_cmd)
-        resp = requests.post(url, json=payload, auth=HTTPDigestAuth(*creds), timeout=5)
-
-    try:
-        data = resp.json()
-    except ValueError:
-        raise RuntimeError(f"attach: non‑JSON response (HTTP {resp.status_code})")
-
-    if data.get("result") != 1 or "cid" not in data:
-        raise RuntimeError(f"attach failed: {data}")
-
+        },
+        creds=creds,
+    )
+    if "cid" not in data:
+        raise RuntimeError(f"attach succeeded without cid: {data}")
     cid = int(data["cid"])
-    CID_CACHE[(joey_rid, hopper_ip)] = (cid, time.time())
-    logging.debug("[ATTACH] success → cid=%s", cid)
+    CID_CACHE[key] = (cid, time.monotonic())
     return cid
 
 
-def get_or_attach_cid(joey_rid: str, hopper_ip: str, *, verbose=False) -> int:
-    key = (joey_rid, hopper_ip)
-    rec = CID_CACHE.get(key)
-    if rec and (time.time() - rec[1] < CACHE_TTL):
-        return rec[0]
-    # find creds in base - try keyring first, fallback to plaintext
-    base_data = {"stbs": store.all()}
-    for alias, info in store.all().items():
-        if info.get("ip") == hopper_ip:
-            # Try secure keyring first
-            username, password = CredentialManager.get_credentials(alias, base_data)
-            if username and password:
-                return _attach(joey_rid, hopper_ip, (username, password), verbose=verbose)
-    raise ValueError(f"No credentials for Hopper {hopper_ip}; pair first.")
+def attach_alias(alias: str) -> Optional[int]:
+    requested, info, host_alias, host = _host_for(alias)
+    rxid = str(info.get("stb") or "")
+    if not rxid:
+        raise ValueError(f"{requested!r} requires an RxID")
+    if requested == host_alias:
+        # A Hopper does not need a cid for remote_key; validate credentials with
+        # a harmless authenticated attach and return any cid the image supplies.
+        creds = _credentials(host_alias)
+        if not creds:
+            raise PermissionError(f"No SGS credentials for Hopper {host_alias!r}; pair first")
+        data = _post(
+            str(host.get("ip") or ""),
+            {
+                "command": "attach",
+                "receiver": sgs_get_receiver_id(),
+                "stb": rxid,
+                "tv_id": 0,
+                "attr": 1,
+            },
+            creds=creds,
+        )
+        return int(data["cid"]) if "cid" in data else None
+    return get_or_attach_cid(rxid, host_alias, str(host["ip"]))
 
-# ──────────────────────────────────────────────────────────────────────────────
-#  send_sgs (unchanged except curl shows https when cid present)
-# ──────────────────────────────────────────────────────────────────────────────
 
 def send_sgs(
     stb_name: str,
@@ -159,50 +168,33 @@ def send_sgs(
     *,
     verbose: bool = False,
 ) -> str:
-    key_name = get_sgs_codes(button_id, delay_ms) or (lambda: (_ for _ in ()).throw(ValueError(f"No SGS mapping for {button_id}")))()
-
-    info = store.get(stb_name) or {}
-    role = info.get("role", "hopper").lower()
-
-    if role == "joey":
-        host = store.get(info.get("host", "")) or (lambda: (_ for _ in ()).throw(ValueError(f"Joey '{stb_name}' missing host")))()
-        target_ip, target_name = host["ip"], info["host"]
-        stb_rid = rxid
-        cid = get_or_attach_cid(rxid, target_ip, verbose=verbose)
-    else:
-        target_ip, target_name, stb_rid, cid = stb_ip, stb_name, rxid, None
-
+    key_name = get_sgs_codes(button_id, int(delay_ms))
+    if not key_name:
+        raise ValueError(f"No SGS mapping for {button_id!r}")
+    requested, info, target_alias, target = _host_for(stb_name)
+    target_ip = str(target.get("ip") or stb_ip or "")
+    target_rxid = str(rxid or info.get("stb") or "")
+    if not target_ip or not target_rxid:
+        raise ValueError(f"{requested!r} requires IP and RxID")
+    cid: Optional[int] = None
+    if requested != target_alias:
+        cid = get_or_attach_cid(target_rxid, target_alias, target_ip)
     payload = {
         "command": "remote_key",
         "receiver": sgs_get_receiver_id(),
-        "stb": stb_rid,
+        "stb": target_rxid,
         "tv_id": 0,
         "key_name": key_name,
     }
     if cid is not None:
         payload["cid"] = cid
-
-    extra = []
-    tgt = store.get(target_name) or {}
-    # Get credentials from keyring or fallback to base.txt
-    base_data = {"stbs": store.all()}
-    username, password = CredentialManager.get_credentials(target_name, base_data)
-    if username and password:
-        extra = ["--prod", "--login", username, "--passwd", password]
-
-    cmd = [sys.executable, "-m", "jamboree.sgs_remote", "-n", target_name, "-i", target_ip, *extra, json.dumps(payload)]
-
-    if verbose or logging.getLogger().isEnabledFor(logging.DEBUG):
-        logging.debug("—" * 60)
-        logging.debug("SGS send: role=%s alias=%s host=%s", role, stb_name, target_name)
-        logging.debug(" → IP=%s RID=%s CID=%s key=%s", target_ip, stb_rid, cid if cid else DEFAULT_CID, key_name)
-        logging.debug(" → payload: %s", json.dumps(payload))
-        proto = "https" if cid else "http"
-        curl_dbg = f"curl -k -u {username}:{password} -X POST {proto}://{target_ip}/www/sgs -d '{json.dumps(payload)}'"
-        logging.debug(" → curl: %s", curl_dbg)
-        logging.debug(" → cmd: %s", " ".join(cmd))
-
-    completed = subprocess.run(cmd, capture_output=True, text=True)
-    if completed.returncode != 0:
-        raise RuntimeError(completed.stderr or completed.stdout or "sgs_remote error")
-    return completed.stdout.strip()
+    if verbose:
+        LOG.debug(
+            "SGS send alias=%s host=%s ip=%s key=%s cid=%s",
+            requested,
+            target_alias,
+            target_ip,
+            key_name,
+            cid,
+        )
+    return json.dumps(_post(target_ip, payload, creds=_credentials(target_alias)), sort_keys=True)
