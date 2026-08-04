@@ -23,7 +23,18 @@ def test_sgs_failure_falls_back_to_configured_rf(monkeypatch):
     monkeypatch.setattr(controller, "send_sgs", lambda *a, **k: (_ for _ in ()).throw(TimeoutError("connection timed out")))
     calls = []
     monkeypatch.setattr(controller, "send_rf_strict", lambda alias, remote, button, delay: calls.append((alias, remote, button, delay)) or "7 83 03 80")
-    monkeypatch.setattr(controller, "classify_sgs_failure", lambda exc: types.SimpleNamespace(recoverable=False, reason="transport"))
+    monkeypatch.setattr(
+        controller,
+        "classify_sgs_failure",
+        lambda exc: types.SimpleNamespace(
+            recoverable=False,
+            auth=False,
+            wrong_device=False,
+            transport=True,
+            reason="transport",
+            kind="transport",
+        ),
+    )
     result = controller.Controller().handle_auto_remote("99", "A", "guide", 80)
     assert result["via"] == "rf_fallback"
     assert calls == [("A", "7", "guide", 80)]
