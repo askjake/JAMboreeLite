@@ -3,7 +3,9 @@
 The OS keyring remains the preferred backend. Windows Credential Manager is
 not available to every logon type (notably some network/remote sessions), so on
 Windows a failed keyring operation falls back to a DPAPI-protected local file.
-Plaintext ``base.txt`` credentials remain explicit opt-in compatibility only.
+When keyring is unusable, new fallback records deliberately use machine-scoped
+DPAPI so they survive logon-session changes on the same host. Plaintext
+``base.txt`` credentials remain explicit opt-in compatibility only.
 """
 from __future__ import annotations
 
@@ -28,6 +30,9 @@ _DPAPI_VERSION = 1
 _DPAPI_UI_FORBIDDEN = 0x1
 _DPAPI_LOCAL_MACHINE = 0x4
 _DPAPI_LOCK = threading.RLock()
+# Remember one unreadable encrypted record so every remote key does not repeat
+# the same warning. Re-pairing overwrites the record and clears this cache.
+_DPAPI_BAD_RECORDS: dict[str, str] = {}
 
 
 class _DATA_BLOB(ctypes.Structure):
@@ -109,13 +114,26 @@ def _protect_once(data: bytes, flags: int) -> bytes:
             kernel32.LocalFree(ctypes.cast(out_blob.pbData, ctypes.c_void_p))
 
 
-def _dpapi_protect(data: bytes) -> tuple[bytes, str]:
-    """Protect bytes with user DPAPI, falling back to machine DPAPI if needed."""
+def _dpapi_protect(data: bytes, *, preferred_scope: str = "user") -> tuple[bytes, str]:
+    """Protect bytes with an explicit DPAPI scope policy.
+
+    User scope is retained for compatibility/testing, but production fallback
+    after a broken Credential Manager session requests machine scope directly.
+    This avoids creating a blob that only the current transient logon state can
+    later decrypt.
+    """
+    preferred = str(preferred_scope or "user").strip().lower()
+    if preferred not in {"user", "machine"}:
+        raise ValueError(f"unsupported DPAPI scope {preferred_scope!r}")
+    if preferred == "machine":
+        order = (("machine", _DPAPI_UI_FORBIDDEN | _DPAPI_LOCAL_MACHINE),)
+    else:
+        order = (
+            ("user", _DPAPI_UI_FORBIDDEN),
+            ("machine", _DPAPI_UI_FORBIDDEN | _DPAPI_LOCAL_MACHINE),
+        )
     errors: list[str] = []
-    for scope, flags in (
-        ("user", _DPAPI_UI_FORBIDDEN),
-        ("machine", _DPAPI_UI_FORBIDDEN | _DPAPI_LOCAL_MACHINE),
-    ):
+    for scope, flags in order:
         try:
             return _protect_once(data, flags), scope
         except Exception as exc:
@@ -192,14 +210,20 @@ def _write_dpapi_document(path: Path, doc: dict) -> None:
             pass
 
 
-def _store_dpapi_credentials(alias: str, username: str, password: str) -> Optional[str]:
+def _store_dpapi_credentials(
+    alias: str,
+    username: str,
+    password: str,
+    *,
+    preferred_scope: str = "user",
+) -> Optional[str]:
     if not _is_windows():
         return None
     plaintext = json.dumps(
         {"username": str(username), "password": str(password)},
         separators=(",", ":"),
     ).encode("utf-8")
-    protected, scope = _dpapi_protect(plaintext)
+    protected, scope = _dpapi_protect(plaintext, preferred_scope=preferred_scope)
     with _DPAPI_LOCK:
         path = _credential_path()
         doc = _read_dpapi_document(path)
@@ -209,38 +233,54 @@ def _store_dpapi_credentials(alias: str, username: str, password: str) -> Option
             "scope": scope,
         }
         _write_dpapi_document(path, doc)
+        _DPAPI_BAD_RECORDS.pop(str(alias), None)
     return f"windows-dpapi-{scope}"
 
 
 def _get_dpapi_credentials(alias: str) -> tuple[Optional[str], Optional[str], Optional[str]]:
     if not _is_windows():
         return None, None, None
+    alias = str(alias)
     with _DPAPI_LOCK:
-        record = (_read_dpapi_document(_credential_path()).get("records", {}) or {}).get(str(alias))
+        record = (_read_dpapi_document(_credential_path()).get("records", {}) or {}).get(alias)
     if not isinstance(record, dict) or not record.get("blob"):
         return None, None, None
+    blob_text = str(record["blob"])
+    with _DPAPI_LOCK:
+        if _DPAPI_BAD_RECORDS.get(alias) == blob_text:
+            return None, None, None
     try:
-        protected = base64.b64decode(str(record["blob"]), validate=True)
+        protected = base64.b64decode(blob_text, validate=True)
         payload = json.loads(_dpapi_unprotect(protected).decode("utf-8"))
         username, password = payload.get("username"), payload.get("password")
         if username and password:
             scope = str(record.get("scope") or "unknown")
+            with _DPAPI_LOCK:
+                _DPAPI_BAD_RECORDS.pop(alias, None)
             return str(username), str(password), f"windows-dpapi-{scope}"
     except Exception as exc:
-        LOG.warning("failed to decrypt DPAPI credentials for %s: %s", alias, exc)
+        with _DPAPI_LOCK:
+            first_failure = _DPAPI_BAD_RECORDS.get(alias) != blob_text
+            _DPAPI_BAD_RECORDS[alias] = blob_text
+        if first_failure:
+            LOG.warning(
+                "DPAPI credential record for %s is unreadable in this logon context; re-pair to replace it: %s",
+                alias,
+                exc,
+            )
     return None, None, None
 
 
 def _delete_dpapi_credentials(alias: str) -> bool:
     if not _is_windows():
         return True
+    alias = str(alias)
     with _DPAPI_LOCK:
         path = _credential_path()
         doc = _read_dpapi_document(path)
         records = doc.setdefault("records", {})
-        if str(alias) not in records:
-            return True
-        records.pop(str(alias), None)
+        records.pop(alias, None)
+        _DPAPI_BAD_RECORDS.pop(alias, None)
         _write_dpapi_document(path, doc)
     return True
 
@@ -278,11 +318,24 @@ class CredentialManager:
 
         if _is_windows():
             try:
-                backend = _store_dpapi_credentials(alias, username, password)
+                # Reaching this block means the per-logon keyring was unavailable
+                # or could not be read back. Bind fallback credentials to this
+                # computer rather than to the same unreliable logon state.
+                backend = _store_dpapi_credentials(
+                    alias,
+                    username,
+                    password,
+                    preferred_scope="machine",
+                )
                 if backend:
-                    read_user, read_password, _ = _get_dpapi_credentials(alias)
+                    read_user, read_password, read_backend = _get_dpapi_credentials(alias)
                     if (read_user, read_password) == (username, password):
-                        LOG.info("stored SGS credentials for %s using %s", alias, backend)
+                        LOG.info(
+                            "stored SGS credentials for %s using %s (verified as %s)",
+                            alias,
+                            backend,
+                            read_backend,
+                        )
                         return True
                 LOG.error("DPAPI readback verification failed for %s", alias)
             except Exception as exc:
@@ -299,9 +352,8 @@ class CredentialManager:
         if not alias:
             return None, None, None
 
-        # Once a DPAPI fallback record exists, prefer it. This avoids repeatedly
-        # invoking Windows Credential Manager in a logon session where CredRead
-        # deterministically fails with ERROR_NO_SUCH_LOGON_SESSION (1312).
+        # Prefer a working DPAPI record once one exists. This avoids repeatedly
+        # invoking Credential Manager in a logon session where CredRead fails.
         if _is_windows():
             username, password, backend = _get_dpapi_credentials(alias)
             if username and password:
