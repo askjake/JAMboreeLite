@@ -26,6 +26,25 @@ def _alias_from_payload(data: dict) -> str:
     return matches[0]
 
 
+@bp_sgs.get("/status")
+def status():
+    """Compatibility status endpoint; never exposes credentials."""
+    return jsonify(ok=True, **sgs_autopair.get_status())
+
+
+@bp_sgs.get("/credentials/status")
+def credential_status():
+    """Report pairing persistence metadata without returning secret values."""
+    data = request.args.to_dict(flat=True)
+    if not any(str(data.get(key) or "").strip() for key in ("alias", "stb", "ip")):
+        return jsonify(ok=True, requires_alias=True, detail="Pass alias, stb, or ip for credential status")
+    try:
+        alias = _alias_from_payload(data)
+        return jsonify(ok=True, **sgs_autopair.credentials_status(alias))
+    except ValueError as exc:
+        return jsonify(ok=False, error=str(exc)), 400
+
+
 @bp_sgs.post("/pair/start")
 def pair_start():
     data = request.get_json(force=True, silent=False) or {}
