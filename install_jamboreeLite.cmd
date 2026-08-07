@@ -24,13 +24,22 @@ set "INSTALL=%USERPROFILE%\Documents\JAMboreeLite"
 if defined JAMBOREE_INSTALL_DIR set "INSTALL=%JAMBOREE_INSTALL_DIR%"
 for %%I in ("%INSTALL%") do set "INSTALL=%%~fI"
 
-rem Never overwrite the batch file that is currently executing. Delegate an
-rem in-place update to a clean staged copy instead.
+rem Never execute the updater from the live tree while that same tree is being
+rem replaced. Copy it to TEMP first so the staged install can safely update both
+rem install_jamboreeLite.cmd and update_jamboreeLite.cmd underneath us.
 if /I "%SOURCE%"=="%INSTALL%" (
     if exist "%SOURCE%\update_jamboreeLite.cmd" (
         echo Installed-tree execution detected; staging a clean update first.
-        cmd.exe /d /c ""%SOURCE%\update_jamboreeLite.cmd""
+        set "DELEGATE_UPDATER=%TEMP%\JAMboreeLite_updater_!RANDOM!_!RANDOM!.cmd"
+        copy /Y "%SOURCE%\update_jamboreeLite.cmd" "!DELEGATE_UPDATER!" >nul
+        if errorlevel 1 (
+            echo ERROR: Could not stage the updater outside the live install tree.
+            if /I not "!JAMBOREE_NO_PAUSE!"=="1" pause
+            exit /b 1
+        )
+        cmd.exe /d /c ""!DELEGATE_UPDATER!""
         set "DELEGATE_RC=!ERRORLEVEL!"
+        del /Q "!DELEGATE_UPDATER!" >nul 2>&1
         exit /b !DELEGATE_RC!
     )
     echo ERROR: In-place update requires update_jamboreeLite.cmd.
