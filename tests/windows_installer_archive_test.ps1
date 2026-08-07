@@ -83,9 +83,16 @@ assert password not in raw
 print("Native Windows DPAPI fallback smoke test passed:", status["backend"])
 '@ | Set-Content -Path $dpapiTest -Encoding UTF8
 
-    & $python $dpapiTest
-    if ($LASTEXITCODE -ne 0) {
-        throw "Native Windows DPAPI fallback test failed with exit code $LASTEXITCODE."
+    $oldPythonPath = $env:PYTHONPATH
+    $env:PYTHONPATH = $install
+    try {
+        & $python $dpapiTest
+        if ($LASTEXITCODE -ne 0) {
+            throw "Native Windows DPAPI fallback test failed with exit code $LASTEXITCODE."
+        }
+    }
+    finally {
+        $env:PYTHONPATH = $oldPythonPath
     }
 }
 finally {
