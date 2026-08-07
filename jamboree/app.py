@@ -8,6 +8,7 @@ import socket
 from collections.abc import Mapping
 
 from flask import Flask, current_app, jsonify, request, send_from_directory
+from werkzeug.exceptions import HTTPException
 
 from . import frame_provider, ip_recovery, sgs_autopair
 from .controller import Controller
@@ -65,9 +66,22 @@ def init_serial_from_base(base_dict: dict) -> None:
 
 @app.errorhandler(Exception)
 def json_error(exc):
-    code = int(getattr(exc, "code", 500))
-    current_app.logger.exception(exc)
-    return jsonify(ok=False, error=str(exc)), code
+    """Return JSON errors without traceback-spamming expected HTTP routing misses."""
+    if isinstance(exc, HTTPException):
+        code = int(exc.code or 500)
+        payload = {
+            "ok": False,
+            "error": exc.name,
+            "message": exc.description,
+            "status": code,
+        }
+        valid_methods = getattr(exc, "valid_methods", None)
+        if valid_methods:
+            payload["allowed_methods"] = sorted(str(method) for method in valid_methods)
+        return jsonify(payload), code
+
+    current_app.logger.exception("Unhandled request error")
+    return jsonify(ok=False, error=str(exc), status=500), 500
 
 
 @app.route("/")
@@ -111,8 +125,32 @@ def save_stb_list():
     return jsonify(ok=True, success=True, stbs=store.all())
 
 
-@app.route("/auto/<remote>/<path:stb>/<button>/<int:delay>", methods=["GET", "POST"])
-def auto_route(remote: str, stb: str, button: str, delay: int):
+@app.route("/auto/<remote>/<path:stb>/<button>/<delay>", methods=["GET", "POST"])
+def auto_route(remote: str, stb: str, button: str, delay: str):
+    """Send one duration-based Auto command.
+
+    Older JAMboRemote clients emitted an extra ``down`` request before the real
+    duration request. Auto/SGS/RF is duration based, so acknowledge those stale
+    edge events as no-ops instead of returning a routing 404 or double-sending.
+    Quick-DART retains explicit down/up semantics on ``/dart``.
+    """
+    raw_delay = str(delay or "").strip()
+    edge = raw_delay.lower()
+    if edge in {"down", "up"}:
+        return jsonify(
+            ok=True,
+            via="auto_compat",
+            ignored=True,
+            ignored_action=edge,
+            detail="Auto mode uses a release duration; explicit down/up belongs to /dart.",
+        )
+    try:
+        duration = int(raw_delay)
+    except (TypeError, ValueError):
+        return jsonify(ok=False, error="delay must be an integer duration in milliseconds"), 400
+    if duration < 0:
+        return jsonify(ok=False, error="delay must be non-negative"), 400
+
     body = request.get_json(silent=True) or {}
     force = body.get("force") or request.args.get("force")
     allow_fallback = str(body.get("allow_rf_fallback", request.args.get("allow_rf_fallback", "true"))).lower() not in {"0", "false", "no", "off"}
@@ -122,7 +160,7 @@ def auto_route(remote: str, stb: str, button: str, delay: int):
             remote,
             stb,
             button,
-            delay,
+            duration,
             force=force,
             allow_rf_fallback=allow_fallback,
             recover_ip=recover,
