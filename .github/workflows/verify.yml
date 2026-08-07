@@ -6,6 +6,7 @@ on:
     branches:
       - main
       - 'agent/**'
+      - 'feature/**'
 
 jobs:
   python:
@@ -25,6 +26,32 @@ jobs:
 
       - name: Compile source
         run: python -m compileall -q jamboree tests
+
+      - name: Validate shell installers
+        shell: bash
+        run: |
+          bash -n install_jamboreeLite.sh
+          bash -n install_jamboreeLite_debian.sh
+
+      - name: Verify installer dependency manifest
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          manifest = Path('requirements_new.txt').read_text(encoding='utf-8')
+          required = {
+              'flask', 'keyring', 'numpy', 'opencv-python-headless', 'paramiko',
+              'Pillow', 'pytesseract', 'pyserial', 'requests',
+          }
+          missing = sorted(name for name in required if name.lower() not in manifest.lower())
+          if missing:
+              raise SystemExit('requirements_new.txt missing: ' + ', '.join(missing))
+          for installer in ('install_jamboreeLite.cmd', 'install_jamboreeLite.sh'):
+              text = Path(installer).read_text(encoding='utf-8')
+              if 'requirements_new.txt' not in text:
+                  raise SystemExit(f'{installer} does not consume requirements_new.txt')
+          print('Installer dependency manifest alignment passed')
+          PY
 
       - name: Run regression suite with isolated keyring
         shell: bash
@@ -69,7 +96,7 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install from exact GitHub ZIP archive
+      - name: Install and update from exact GitHub source
         shell: pwsh
         env:
           ARCHIVE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}

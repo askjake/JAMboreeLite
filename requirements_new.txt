@@ -1,13 +1,12 @@
-# JAMboreeLite Dependencies (Updated with Security Enhancements)
+# JAMboreeLite runtime dependencies
+# Keep this file aligned with jamboree/pyproject.toml and all installers.
 
-# Core dependencies
-flask>=3.0.0
-pyserial>=3.5
-paramiko>=3.0.0
-requests>=2.31.0
-
-# Security: Secure credential storage
-keyring==24.2.0
-
-# Optional but recommended
-colorama>=0.4.6  # Already in venv
+flask>=3.0,<4
+keyring>=24.2,<26
+numpy>=1.26,<3
+opencv-python-headless>=4.9,<6
+paramiko>=3.4,<6
+Pillow>=10,<13
+pytesseract>=0.3.10,<0.4
+pyserial>=3.5,<4
+requests>=2.31,<3
