@@ -17,16 +17,18 @@ class BrokenWindowsKeyring:
         raise OSError(1312, "CredDelete", "A specified logon session does not exist")
 
 
-def test_windows_keyring_1312_falls_back_to_dpapi(monkeypatch, tmp_path):
+def test_windows_keyring_1312_falls_back_to_machine_dpapi(monkeypatch, tmp_path):
     path = tmp_path / "credentials.dpapi.json"
     monkeypatch.setenv("JAMBOREE_CREDENTIAL_FILE", str(path))
     monkeypatch.setattr(credentials_module, "keyring", BrokenWindowsKeyring())
     monkeypatch.setattr(credentials_module, "_is_windows", lambda: True)
-    monkeypatch.setattr(
-        credentials_module,
-        "_dpapi_protect",
-        lambda data: (b"protected:" + data[::-1], "machine"),
-    )
+    scopes = []
+
+    def protect(data, *, preferred_scope="user"):
+        scopes.append(preferred_scope)
+        return b"protected:" + data[::-1], preferred_scope
+
+    monkeypatch.setattr(credentials_module, "_dpapi_protect", protect)
     monkeypatch.setattr(
         credentials_module,
         "_dpapi_unprotect",
@@ -34,6 +36,7 @@ def test_windows_keyring_1312_falls_back_to_dpapi(monkeypatch, tmp_path):
     )
 
     assert CredentialManager.store_credentials("Wally", "issued-user", "issued-secret")
+    assert scopes == ["machine"]
     assert CredentialManager.get_credentials("Wally") == ("issued-user", "issued-secret")
 
     status = CredentialManager.status("Wally")
@@ -55,7 +58,10 @@ def test_dpapi_record_is_preferred_over_broken_keyring(monkeypatch, tmp_path):
     monkeypatch.setattr(
         credentials_module,
         "_dpapi_protect",
-        lambda data: (b"protected:" + data[::-1], "user"),
+        lambda data, *, preferred_scope="user": (
+            b"protected:" + data[::-1],
+            preferred_scope,
+        ),
     )
     monkeypatch.setattr(
         credentials_module,
@@ -68,6 +74,38 @@ def test_dpapi_record_is_preferred_over_broken_keyring(monkeypatch, tmp_path):
     broken = BrokenWindowsKeyring()
     monkeypatch.setattr(credentials_module, "keyring", broken)
     assert CredentialManager.get_credentials("Hopper") == ("u", "p")
+
+
+def test_unreadable_dpapi_record_is_warned_once_until_repaired(monkeypatch, tmp_path, caplog):
+    path = tmp_path / "credentials.dpapi.json"
+    path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "records": {
+                    "Old": {
+                        "blob": "YWJj",
+                        "scope": "user",
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("JAMBOREE_CREDENTIAL_FILE", str(path))
+    monkeypatch.setattr(credentials_module, "_is_windows", lambda: True)
+    monkeypatch.setattr(credentials_module, "keyring", None)
+    monkeypatch.setattr(
+        credentials_module,
+        "_dpapi_unprotect",
+        lambda _data: (_ for _ in ()).throw(OSError(-2146893813, "Key not valid for use in specified state")),
+    )
+    credentials_module._DPAPI_BAD_RECORDS.clear()
+
+    assert CredentialManager.get_credentials("Old") == (None, None)
+    assert CredentialManager.get_credentials("Old") == (None, None)
+    warnings = [record.message for record in caplog.records if "DPAPI credential record" in record.message]
+    assert len(warnings) == 1
 
 
 def test_plaintext_opt_in_is_not_reported_as_secure_backend(monkeypatch):
