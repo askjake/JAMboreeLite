@@ -20,6 +20,7 @@ from .serial_hub import serial_mgr
 from .stb_store import store
 
 setup_logging(logging.DEBUG if os.getenv("JAMBOREE_DEBUG") == "1" else logging.INFO)
+LOG = logging.getLogger(__name__)
 
 app = Flask(__name__, static_folder=str(STATIC_DIR))
 app.register_blueprint(bp_sgs)
@@ -30,7 +31,17 @@ set_controller(ctl)
 try:
     frame_provider.configure_from_env()
 except Exception:
-    logging.getLogger(__name__).exception("failed to configure frame provider")
+    LOG.exception("failed to configure frame provider")
+
+# Background auto-pair without a frame source can only start the receiver's PIN
+# screen and then spin OCR for 45 seconds. Disable only the *automatic trigger*
+# by default when no frame provider is configured. Manual /sgs/pair/start and
+# /sgs/pair/complete remain available, and operators can explicitly override
+# this with JAMBOREE_AUTOPAIR=1.
+_frame_status = frame_provider.status()
+if "JAMBOREE_AUTOPAIR" not in os.environ and not _frame_status.get("configured"):
+    os.environ["JAMBOREE_AUTOPAIR"] = "0"
+    LOG.info("background SGS autopair disabled: no frame provider configured")
 
 CFG = {
     "stb_alias": os.getenv("JAMBOREE_STB_ALIAS", ""),
@@ -61,7 +72,7 @@ def init_serial_from_base(base_dict: dict) -> None:
         if isinstance(info, Mapping) and (info or {}).get("com_port")
     }
     serial_mgr.sync_aliases(mapping, baud=115200)
-    logging.getLogger(__name__).info("mapped %d alias(es) to DART ports", len(mapping))
+    LOG.info("mapped %d alias(es) to DART ports", len(mapping))
 
 
 @app.errorhandler(Exception)
@@ -106,6 +117,8 @@ def health():
         hostname=socket.gethostname(),
         stbs=len(store.all()),
         frame=frame_provider.status(),
+        background_autopair=str(os.getenv("JAMBOREE_AUTOPAIR", "1")).lower()
+        not in {"0", "false", "no", "off"},
     )
 
 
@@ -155,8 +168,8 @@ def auto_route(remote: str, stb: str, button: str, delay: str):
     force = body.get("force") or request.args.get("force")
     allow_fallback = str(body.get("allow_rf_fallback", request.args.get("allow_rf_fallback", "true"))).lower() not in {"0", "false", "no", "off"}
     recover = str(body.get("recover_ip", request.args.get("recover_ip", "true"))).lower() not in {"0", "false", "no", "off"}
-    return jsonify(
-        ctl.handle_auto_remote(
+    try:
+        result = ctl.handle_auto_remote(
             remote,
             stb,
             button,
@@ -165,7 +178,22 @@ def auto_route(remote: str, stb: str, button: str, delay: str):
             allow_rf_fallback=allow_fallback,
             recover_ip=recover,
         )
-    )
+    except RuntimeError as exc:
+        detail = str(exc)
+        if detail.startswith("SGS failed (") and "; RF fallback failed (" in detail:
+            # Both configured transports were attempted and neither was usable.
+            # This is an operational availability result, not an unhandled Flask
+            # exception, so return a structured 503 without a traceback.
+            LOG.warning("all transports unavailable for %s: %s", stb, detail)
+            return jsonify(
+                ok=False,
+                error="all_transports_unavailable",
+                detail=detail,
+                status=503,
+                alias=stb,
+            ), 503
+        raise
+    return jsonify(result)
 
 
 @app.route("/dart/<path:stb>/<button>/<action>", methods=["GET", "POST"])
