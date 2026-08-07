@@ -74,6 +74,25 @@ def test_auto_duration_still_dispatches_integer_duration(monkeypatch):
     assert isinstance(captured["delay"], int)
 
 
+def test_dual_transport_failure_returns_structured_503(monkeypatch):
+    def dispatch(*_args, **_kwargs):
+        raise RuntimeError(
+            "SGS failed (No SGS credentials for Hopper 'H'; pair first); "
+            "RF fallback failed (DART port for 'J' is not open/ready and writable)"
+        )
+
+    monkeypatch.setattr(app_module.ctl, "handle_auto_remote", dispatch)
+    client = app_module.app.test_client()
+    response = client.get("/auto/3/J/Home/70")
+    assert response.status_code == 503
+    data = response.get_json()
+    assert data["ok"] is False
+    assert data["error"] == "all_transports_unavailable"
+    assert data["alias"] == "J"
+    assert "pair first" in data["detail"]
+    assert "DART port" in data["detail"]
+
+
 def test_expected_http_errors_are_structured_json():
     client = app_module.app.test_client()
 
@@ -114,7 +133,7 @@ def test_safe_sgs_status_compatibility_routes(monkeypatch):
             "requested_alias": alias,
             "pair_alias": alias,
             "paired": True,
-            "secure_backend": "windows-dpapi-user",
+            "secure_backend": "windows-dpapi-machine",
             "username_present": True,
             "password_present": True,
         },
@@ -133,5 +152,5 @@ def test_safe_sgs_status_compatibility_routes(monkeypatch):
     assert response.status_code == 200
     data = response.get_json()
     assert data["paired"] is True
-    assert data["secure_backend"] == "windows-dpapi-user"
+    assert data["secure_backend"] == "windows-dpapi-machine"
     assert "secret" not in repr(data).lower()
