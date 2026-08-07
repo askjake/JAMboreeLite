@@ -47,6 +47,46 @@ try {
     if ($LASTEXITCODE -ne 0) {
         throw "Installed application import failed with exit code $LASTEXITCODE."
     }
+
+    # Exercise the exact production fallback on a real Windows runner. The fake
+    # keyring reproduces ERROR_NO_SUCH_LOGON_SESSION (1312); DPAPI itself is real.
+    $env:JAMBOREE_CREDENTIAL_FILE = Join-Path $env:RUNNER_TEMP 'jamboree-dpapi-ci.json'
+    $dpapiTest = Join-Path $env:RUNNER_TEMP 'verify_jamboree_dpapi.py'
+    @'
+from pathlib import Path
+import os
+
+from jamboree.core import credentials as credentials_module
+from jamboree.core.credentials import CredentialManager
+
+class BrokenWindowsKeyring:
+    def set_password(self, *_args, **_kwargs):
+        raise OSError(1312, "CredRead", "A specified logon session does not exist")
+    def get_password(self, *_args, **_kwargs):
+        raise OSError(1312, "CredRead", "A specified logon session does not exist")
+    def delete_password(self, *_args, **_kwargs):
+        raise OSError(1312, "CredDelete", "A specified logon session does not exist")
+
+credentials_module.keyring = BrokenWindowsKeyring()
+alias = "CI-DPAPI"
+username = "ci-issued-user"
+password = "ci-issued-secret"
+assert CredentialManager.store_credentials(alias, username, password)
+assert CredentialManager.get_credentials(alias) == (username, password)
+status = CredentialManager.status(alias)
+assert status["stored"] is True
+assert status["secure"] is True
+assert status["backend"] in {"windows-dpapi-user", "windows-dpapi-machine"}
+raw = Path(os.environ["JAMBOREE_CREDENTIAL_FILE"]).read_text(encoding="utf-8")
+assert username not in raw
+assert password not in raw
+print("Native Windows DPAPI fallback smoke test passed:", status["backend"])
+'@ | Set-Content -Path $dpapiTest -Encoding UTF8
+
+    & $python $dpapiTest
+    if ($LASTEXITCODE -ne 0) {
+        throw "Native Windows DPAPI fallback test failed with exit code $LASTEXITCODE."
+    }
 }
 finally {
     Pop-Location
