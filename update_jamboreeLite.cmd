@@ -63,10 +63,22 @@ if errorlevel 1 (
     exit /b 1
 )
 
+rem FOR /F command substitution mangles quoted executable paths such as
+rem C:\Program Files\Git\cmd\git.exe. Redirect rev-parse to a file instead,
+rem then read the first line with SET /P; direct quoted Git invocation is safe.
 set "SOURCE_COMMIT="
-for /f "delims=" %%C in ('"!GIT!" -C "!TMP!" rev-parse HEAD') do if not defined SOURCE_COMMIT set "SOURCE_COMMIT=%%C"
-if not defined SOURCE_COMMIT (
+set "COMMIT_FILE=!TMP!\.jamboree_resolved_commit"
+"!GIT!" -C "!TMP!" rev-parse HEAD > "!COMMIT_FILE!"
+if errorlevel 1 (
     echo ERROR: Could not resolve staged source commit.
+    rmdir /S /Q "!TMP!"
+    if /I not "!JAMBOREE_NO_PAUSE!"=="1" pause
+    exit /b 1
+)
+set /p SOURCE_COMMIT=<"!COMMIT_FILE!"
+del /Q "!COMMIT_FILE!" >nul 2>&1
+if not defined SOURCE_COMMIT (
+    echo ERROR: Staged source commit was empty.
     rmdir /S /Q "!TMP!"
     if /I not "!JAMBOREE_NO_PAUSE!"=="1" pause
     exit /b 1
