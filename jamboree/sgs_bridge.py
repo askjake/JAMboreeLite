@@ -171,18 +171,30 @@ def send_sgs(
     key_name = get_sgs_codes(button_id, int(delay_ms))
     if not key_name:
         raise ValueError(f"No SGS mapping for {button_id!r}")
+
     requested, info, target_alias, target = _host_for(stb_name)
     target_ip = str(target.get("ip") or stb_ip or "")
-    target_rxid = str(rxid or info.get("stb") or "")
-    if not target_ip or not target_rxid:
+    requested_rxid = str(rxid or info.get("stb") or "")
+    if not target_ip or not requested_rxid:
         raise ValueError(f"{requested!r} requires IP and RxID")
+
     cid: Optional[int] = None
+    command_stb_rid = requested_rxid
     if requested != target_alias:
-        cid = get_or_attach_cid(target_rxid, target_alias, target_ip)
+        # Joey SGS is proxied through its host Hopper.  The attach identifies the
+        # Joey by its own RxID and returns a child-specific CID.  remote_key is
+        # then addressed to the *host Hopper RID* with that CID selecting the
+        # attached Joey.  Sending the Joey RxID in remote_key.stb is accepted by
+        # some images but can operate the Hopper itself instead of the child.
+        cid = get_or_attach_cid(requested_rxid, target_alias, target_ip)
+        command_stb_rid = str(target.get("stb") or "")
+        if not command_stb_rid:
+            raise ValueError(f"Host Hopper {target_alias!r} requires an RxID")
+
     payload = {
         "command": "remote_key",
         "receiver": sgs_get_receiver_id(),
-        "stb": target_rxid,
+        "stb": command_stb_rid,
         "tv_id": 0,
         "key_name": key_name,
     }
@@ -190,10 +202,12 @@ def send_sgs(
         payload["cid"] = cid
     if verbose:
         LOG.debug(
-            "SGS send alias=%s host=%s ip=%s key=%s cid=%s",
+            "SGS send alias=%s host=%s ip=%s requested_rid=%s command_stb=%s key=%s cid=%s",
             requested,
             target_alias,
             target_ip,
+            requested_rxid,
+            command_stb_rid,
             key_name,
             cid,
         )
