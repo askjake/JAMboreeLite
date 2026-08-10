@@ -1,282 +1,372 @@
 # JAMboreeLite
 
-Headless Flask bundle that drives DISH/Sling set‑tops via **RF/DART** (serial) and **SGS** (HTTP/HTTPS), with a simple web UI for a virtual remote and an STB manager.
+JAMboreeLite is a lightweight Flask service and web remote for controlling DISH/Sling set-tops through **SGS** and **RF/DART**.
 
-This README is tuned for the Sling setup Jake helped with: **Hopper vs Joey accounting, SGS pairing, and common gotchas**.
+It supports independent Hopper/Wally/XIP receivers, HopperPlus/Joey-style child routing through a host Hopper, secure SGS pairing persistence, and a browser/API surface for manual and automated control.
 
----
+## Safe upgrade first
 
-## TL;DR – Quick Setup
+Existing installations should **upgrade in place** rather than creating a new repository or copying files manually. The updater preserves the STB configuration and secure pairing state.
 
-1. **Install (Windows or Linux)**
+See [`SETUP_INSTRUCTIONS.txt`](SETUP_INSTRUCTIONS.txt) for the full install/upgrade guide.
 
-* **Windows**: open **PowerShell (Run as Admin)** and run:
+### Windows: existing install
 
-  ```powershell
-  iwr -useb https://raw.githubusercontent.com/askjake/JAMboreeLite/main/install_jamboreeLite.cmd | ni "$env:TEMP\install_jamboreeLite.cmd" -Force; & "$env:TEMP\install_jamboreeLite.cmd"
-  ```
+Default install location:
 
-  The script installs Git & Python 3.11 (via Chocolatey if missing), clones to `Documents\JAMboreeLite`, creates a venv, installs deps, and makes a desktop shortcut.
-
-* **Linux/Debian**:
-
-  ```bash
-  curl -fsSL https://raw.githubusercontent.com/askjake/JAMboreeLite/main/install_jamboreeLite.sh | bash
-  ```
-
-2. **Create your `base.txt`**
-
-* Copy **`base_blank.txt` → `base.txt`** and fill in your boxes. (Or set `JAMBOREE_BASE=/path/to/base.txt` to point at a different file.)
-
-3. **Launch the server**
-
-```bash
-# Windows
-%USERPROFILE%\Documents\JAMboreeLite\venv\Scripts\python.exe -m jamboree.app
-
-# Linux/mac
-~/Documents/JAMboreeLite/venv/bin/python -m jamboree.app
+```text
+%USERPROFILE%\Documents\JAMboreeLite
 ```
 
-* Web UI opens at **`http://<this-host>:5003/`** (Remote) and **`/settops`** (STB manager).
+PowerShell:
 
-4. **Mark Hoppers vs Joeys** in `base.txt`
+```powershell
+$ROOT = "$env:USERPROFILE\Documents\JAMboreeLite"
+Set-Location $ROOT
+$env:JAMBOREE_NO_PAUSE = '1'
+& "$ROOT\update_jamboreeLite.cmd"
+```
 
-* Hopper entries: `"role": "hopper"` and their own `ip`.
-* Joey entries: `"role": "joey"` **and** `"host": "<HopperAlias>"` (we send SGS to the Hopper on their behalf).
+To install a specific branch/tag/commit:
 
-5. **Pair each Hopper via SGS** (once per Hopper)
+```powershell
+$ROOT = "$env:USERPROFILE\Documents\JAMboreeLite"
+Set-Location $ROOT
+$env:JAMBOREE_REF = 'YOUR_BRANCH_OR_TAG'
+$env:JAMBOREE_NO_PAUSE = '1'
+& "$ROOT\update_jamboreeLite.cmd"
+```
 
-* Go to **`/settops`** → click **Pair** on the Hopper row → TV shows a 6‑digit PIN → enter it → **Complete**.
-* Credentials (login + password) are saved back into `base.txt` automatically for future **HTTPS /www/sgs** calls.
+### Linux / Raspberry Pi: existing install
 
-6. **Drive boxes**
+Run the dedicated updater from the installed tree:
 
-* Use **`/` (JAMboRemote)** to click buttons.
-* Toggle between **DART (serial)** and **SGS** in the upper‑right switch.
+```bash
+cd "$HOME/JAMboreeLite"
+JAMBOREE_REF=main bash ./update_jamboreeLite.sh
+```
 
-That’s it.
+or, for a Documents-based install:
 
----
+```bash
+cd "$HOME/Documents/JAMboreeLite"
+JAMBOREE_REF=main bash ./update_jamboreeLite.sh
+```
 
-## What’s in the box
+`update_jamboreeLite.sh` defaults the target directory to the directory containing the updater, which prevents an existing Pi install under `~/JAMboreeLite` from accidentally being updated into `~/Documents/JAMboreeLite`.
 
-* **Flask app** with two pages:
+## What upgrades preserve
 
-  * **`/`** – virtual remote (clickable buttons; press/hold supported)
-  * **`/settops`** – STB Manager (view/edit `base.txt`, start/complete SGS pairing)
-* **Serial/DART bridge** (`jamboree/serial_bridge.py`) for Nano‑Every Quick‑DART and legacy timed DART
-* **SGS bridge** (`jamboree/sgs_bridge.py`, `jamboree/sgs_lib.py`) that:
+The install/update flow is deliberately state-safe:
 
-  * Does **no‑auth pairing** via `http://<stb>/sgs_noauth` (tries your configured port first, then **falls back to :8080**)
-  * After pairing, uses **HTTPS mutual‑TLS** to `https://<hopper>/www/sgs` with digest‑auth (auto‑fallback to HTTP if the image allows it)
-  * **Joey routing**: if an STB has `"role": "joey"` and `"host": "<HopperAlias>"`, commands are sent to the host Hopper’s IP
-* **Base file store** (`jamboree/stb_store.py`) – edits to `/settops` persist to `base.txt`
+- `base.txt` is preserved during source synchronization.
+- The existing Python virtual environment is preserved when it already uses Python 3.11+.
+- A pre-update copy of the existing application/configuration tree is created.
+- Secure SGS credentials are stored outside the mirrored application source:
+  - OS keyring when available.
+  - Windows machine-scoped DPAPI fallback when Credential Manager is unavailable in the current logon context.
+  - Linux Secret Service/keyring backend when configured.
+- Installed source identity is written to:
+  - `.jamboree_source_ref`
+  - `.jamboree_source_commit`
 
----
+Windows DPAPI fallback credentials normally live at:
 
-## Requirements
+```text
+%LOCALAPPDATA%\JAMboreeLite\sgs_credentials.dpapi.json
+```
 
-* Python **3.11+** (installer ensures this)
-* For RF/DART: an Arduino Nano Every (or your DART board) at **115200 baud**, and a **COM port** per STB entry
-* Network access from the JAMboreeLite host to each Hopper/Joey IP
+A normal source update does **not** overwrite that file.
 
-Dependencies are minimal: `flask`, `pyserial`, `paramiko`, `requests` (see `pyproject.toml`).
+## Fresh install
 
----
+### Windows
 
-## `base.txt` – schema & examples
+Requirements:
 
-Set `JAMBOREE_BASE` env var to move the file; otherwise it’s `./base.txt` in the working directory. Shape:
+- Git for Windows
+- Python 3.11+
 
-```jsonc
+PowerShell:
+
+```powershell
+$SRC = Join-Path $env:TEMP 'JAMboreeLite-install'
+Remove-Item $SRC -Recurse -Force -ErrorAction SilentlyContinue
+git clone --depth 1 --branch main https://github.com/askjake/JAMboreeLite.git $SRC
+cmd.exe /d /c "`"$SRC\install_jamboreeLite.cmd`""
+```
+
+Default target:
+
+```text
+%USERPROFILE%\Documents\JAMboreeLite
+```
+
+### Debian / Raspberry Pi
+
+```bash
+set -Eeuo pipefail
+sudo apt-get update
+sudo apt-get install -y git python3 python3-venv python3-pip rsync
+
+cd "$HOME"
+git clone https://github.com/askjake/JAMboreeLite.git JAMboreeLite-bootstrap
+cd JAMboreeLite-bootstrap
+export JAMBOREE_REF=main
+export JAMBOREE_INSTALL_DIR="$HOME/JAMboreeLite"
+bash ./install_jamboreeLite_debian.sh
+```
+
+Python 3.11 or newer is required.
+
+Tesseract is optional for normal SGS/DART control. It is required only for OCR-assisted IP/PIN recovery features.
+
+## Run JAMboreeLite
+
+Windows:
+
+```powershell
+$ROOT = "$env:USERPROFILE\Documents\JAMboreeLite"
+Set-Location $ROOT
+& "$ROOT\venv\Scripts\python.exe" -m jamboree.app
+```
+
+Linux / Pi:
+
+```bash
+cd "$HOME/JAMboreeLite"
+venv/bin/python -m jamboree.app
+```
+
+Default web endpoints:
+
+```text
+http://<jamboree-host>:5003/
+http://<jamboree-host>:5003/settops
+```
+
+Health check:
+
+```bash
+curl http://127.0.0.1:5003/api/health
+```
+
+## SGS pairing
+
+Pair the **host Hopper** once through `/settops` or the pairing API. Child devices reuse the host Hopper pairing and are addressed through the appropriate attach/CID route.
+
+Current secure storage behavior:
+
+- OS keyring is preferred.
+- On Windows, if Credential Manager cannot be reliably read in the current session, JAMboreeLite stores the new pairing with machine-scoped DPAPI and verifies readback before reporting success.
+- Plaintext `lname` / `passwd` values in a legacy `base.txt` are compatibility data only. Plaintext use requires explicit opt-in and is not the preferred secure backend.
+- `/get-stb-list` does not expose stored credential secrets.
+
+Safe credential status check:
+
+```bash
+curl "http://127.0.0.1:5003/sgs/credentials/status?alias=HOPPER3-PROD"
+```
+
+Status reports whether credentials are present and which secure backend is active without returning the password.
+
+### Manual pairing API
+
+Start pairing:
+
+```bash
+curl -X POST http://<jamboree-host>:5003/sgs/pair/start \
+  -H 'Content-Type: application/json' \
+  -d '{"alias":"HOPPER3-PROD"}'
+```
+
+Complete pairing after the PIN appears:
+
+```bash
+curl -X POST http://<jamboree-host>:5003/sgs/pair/complete \
+  -H 'Content-Type: application/json' \
+  -d '{"alias":"HOPPER3-PROD","pin":"123456"}'
+```
+
+The `/settops` UI is usually easier for manual pairing.
+
+## STB topology
+
+A typical independent Hopper/Wally/XIP row is self-contained:
+
+```json
 {
-  "stbs": {
-    "Hopper-01": {
-      "alias": "Hopper-01",      // human name (key is also the alias)
-      "stb":   "R1911748782-84", // Receiver ID used by SGS
-      "ip":    "192.168.2.171",  // device IP (Hopper IP for Hoppers; Joey IPs are okay too)
-      "protocol": "SGS",          // SGS or RF (remote page toggle decides live mode)
-      "remote": "14",             // DART remote number (if you use RF)
-      "com_port": "COM11",        // serial port for DART
-      "role": "hopper",           // hopper | joey
-      "host": "Hopper-01",        // for Hoppers, host can be self/alias
-      "lname": "USER",            // filled after a successful pair_complete
-      "passwd": "<saved>"         // filled after pair_complete
-    },
-    "Joey-1": {
-      "alias": "Joey-1",
-      "stb":   "R1971349703-16",
-      "ip":    "192.168.2.65",
-      "protocol": "SGS",
-      "remote": "",
-      "com_port": "",
-      "role": "joey",
-      "host": "Hopper-01"         // ← this tells JAMboreeLite to send SGS to the Hopper
-    }
-  }
+  "alias": "HOPPER3-PROD",
+  "stb": "XAFxxxxxxxxxxxx",
+  "ip": "192.168.1.67",
+  "protocol": "SGS",
+  "remote": "8",
+  "com_port": "COM3",
+  "role": "hopper",
+  "host": "HOPPER3-PROD"
 }
 ```
 
-> **Important**
->
-> * Hoppers must be paired once; Joeys inherit control through their Hopper (`host`).
-> * If you only use RF/DART, you can skip SGS fields—but keep `remote` and `com_port`.
+A child receiver points to its host Hopper:
 
----
+```json
+{
+  "alias": "MOCHAJOEY-HOPPER3-PROD4",
+  "stb": "XAFyyyyyyyyyyyy",
+  "protocol": "SGS",
+  "remote": "4",
+  "com_port": "COM3",
+  "role": "joey",
+  "host": "HOPPER3-PROD4"
+}
+```
 
-## Using the Web UI
+Legacy configuration normalization handles older independent receiver rows with stale/default `host` fields without rewriting `base.txt`.
 
-### `/settops` – STB Manager
+For true child devices, JAMboreeLite pairs through the host Hopper, attaches using the child receiver ID, then sends `remote_key` to the host Hopper with the child-specific CID.
 
-* **Edit table inline** and **Save** → writes `base.txt`.
-* **Pair** (Hoppers only):
+## Remote control API
 
-  1. Click **Pair** on the Hopper row → TV shows a 6‑digit PIN
-  2. Enter PIN in the row → **Complete**
-  3. `lname`/`passwd` get stored into `base.txt` for secure SGS calls
+### Auto / SGS or configured transport
 
-If your image exposes no‑auth on `:8080` only, the code retries there automatically.
+```text
+GET /auto/<remote>/<alias>/<button>/<delay_ms>
+```
 
-### `/` – JAMboRemote
+Example:
 
-* Dropdown lets you select an STB alias.
-* **Toggle** in the top‑right switches between **SGS** and **DART**.
-* **Press/hold** behaviors are supported; on release, the UI sends either the `…/up` DART call or the timed SGS with the measured duration.
+```bash
+curl "http://127.0.0.1:5003/auto/8/HOPPER3-PROD/Guide/240"
+```
 
----
+Successful SGS result:
 
-## REST API (for automation)
+```json
+{
+  "ok": true,
+  "stdout": "{\"result\": 1}",
+  "via": "sgs"
+}
+```
 
-> Base URL is your JAMboreeLite host, e.g. `http://10.0.0.100:5003`.
+Healthy SGS commands return immediately after receiver confirmation. Expensive IP/MAC identity discovery is reserved for the recovery path rather than blocking every successful keypress.
 
-**Discovery & config**
+### Quick DART
 
-* `GET /hostname` → `{ hostname }`
-* `GET /get-stb-list` → `{ stbs: {…} }` (current `base.txt`)
-* `POST /save-stb-list` → body is the full `{ stbs: … }` object to persist
+```text
+GET /dart/<alias>/<button>/down
+GET /dart/<alias>/<button>/up
+```
 
-**SGS pairing** (Hopper only)
+Example:
 
-* `POST /sgs/pair/start` with JSON: `{ "ip":"192.168.2.171", "stb":"R1911748782-84" }`
-* `POST /sgs/pair/complete` with JSON: `{ "ip":"192.168.2.171", "stb":"R1911748782-84", "pin":"123456" }`
+```bash
+curl "http://127.0.0.1:5003/dart/HOPPER3-PROD/Guide/down"
+curl "http://127.0.0.1:5003/dart/HOPPER3-PROD/Guide/up"
+```
 
-  On success, `ok: true` and the Hopper’s credentials are saved into `base.txt`.
+DART requires the configured serial port to be present and usable. An unavailable serial port is not reported as successful delivery.
 
-**DART (serial) – Quick‑DART and legacy timed**
+## SGS recovery and RF fallback
 
-* `GET /dart/<alias>/<button>/<action>` → action is `down` or `up` (Quick‑DART)
+Normal Auto commands prefer the configured transport. SGS failures are classified before recovery is attempted.
 
-  * Example: `GET /dart/Hopper-01/guide/down`
-* `GET /auto/<remote>/<alias>/<button>/<delay_ms>` → legacy “press for N ms”
+When appropriate, JAMboreeLite can:
 
-  * Example: `GET /auto/14/Hopper-01/guide/400`
+- verify the stored receiver identity,
+- recover a changed IP through identity/MAC discovery,
+- optionally use RF/DART navigation plus OCR when configured,
+- retry SGS after recovery,
+- fall back to RF/DART if that transport is healthy.
 
-**Utilities**
+If both configured transports are unavailable, the API returns a structured `503 all_transports_unavailable` response instead of an unhandled Flask traceback.
 
-* `GET /unpair/<alias>` → Sends the SAT/DVR/Guide “unpair” combo over DART
+## Linux/Pi keyring note
 
----
+On desktop Linux, the Secret Service session may already be available.
 
-## Pairing notes (Sling / Hopper & Joey)
+For a headless SSH session, the application must run in the same unlocked D-Bus/keyring session that provides the Secret Service backend. The updater does not delete or rewrite the OS keyring.
 
-* **Always pair the Hopper** (one‑time): Joeys use the Hopper as their SGS gateway.
-* If pairing via cURL, **call JAMboreeLite** (the Flask API), not the box directly—JAMboreeLite handles fallbacks, TLS, and persistence:
+## Backups and rollback
 
-  ```bash
-  curl -X POST http://<jamhost>:5003/sgs/pair/start \
-       -H "Content-Type: application/json" \
-       -d '{"ip":"192.168.2.171","stb":"R1911748782-84"}'
+Windows update backups:
 
-  # after the PIN appears on the TV
-  curl -X POST http://<jamhost>:5003/sgs/pair/complete \
-       -H "Content-Type: application/json" \
-       -d '{"ip":"192.168.2.171","stb":"R1911748782-84","pin":"123456"}'
-  ```
-* **Ports**: pairing first tries the configured port (often 80), then auto‑retries `:8080` if needed.
-* **HTTPS**: after pairing, SGS commands use `https://<hopper>/www/sgs` with client certs (`jamboree/cert.pem`, `jamboree/key.pem`) and digest auth (saved `lname`/`passwd`). If the firmware allows, the bridge can fall back to HTTP.
+```text
+%LOCALAPPDATA%\JAMboreeLite\update-backups\
+```
 
----
+Linux/Pi update backups:
 
-## Troubleshooting (field‑tested with Sling)
+```text
+${XDG_DATA_HOME:-$HOME/.local/share}/JAMboreeLite/update-backups/
+```
 
-**“curl: (28) Failed to connect … :8080”**
+To reinstall a known ref/tag/commit, set `JAMBOREE_REF` and run the same updater again.
 
-* Some images don’t expose `/sgs_noauth` on `:8080`. Use the **Flask API** `/sgs/pair/start` and let it auto‑try the right port.
+Example Windows:
 
-**“URL rejected: Bad hostname / Malformed input”** (Windows)
+```powershell
+$ROOT = "$env:USERPROFILE\Documents\JAMboreeLite"
+$env:JAMBOREE_REF = 'KNOWN_GOOD_REF'
+$env:JAMBOREE_NO_PAUSE = '1'
+& "$ROOT\update_jamboreeLite.cmd"
+```
 
-* Your quoting/escaping is off. Prefer the **`/settops`** UI, or on Windows use double‑quotes and escape inner quotes: `-d "{\"ip\":\"…\"}"`.
+Example Linux/Pi:
 
-**Joey doesn’t respond to SGS**
+```bash
+cd "$HOME/JAMboreeLite"
+JAMBOREE_REF=KNOWN_GOOD_REF bash ./update_jamboreeLite.sh
+```
 
-* Ensure the Joey entry has `"role": "joey"` and a valid `"host": "<HopperAlias>"` that exists in `stbs`. Commands will be sent to the **Hopper’s** IP.
+## Installed-version verification
 
-**No serial output / DART errors**
+Windows:
 
-* Confirm the `com_port` is correct and the device is 115200 baud. Quick‑DART expects discrete `down`/`up`; legacy timed DART uses the `auto` route with milliseconds.
+```powershell
+$ROOT = "$env:USERPROFILE\Documents\JAMboreeLite"
+Get-Content "$ROOT\.jamboree_source_ref"
+Get-Content "$ROOT\.jamboree_source_commit"
+& "$ROOT\venv\Scripts\python.exe" -c "import jamboree.app; print('JAMBOREE_IMPORT=PASS')"
+```
 
-**HTTPS SGS fails with cert/auth errors**
+Linux/Pi:
 
-* Verify `jamboree/cert.pem` and `jamboree/key.pem` exist and match your environment. After a successful **pair_complete**, `lname` and `passwd` should be stored in `base.txt` automatically.
+```bash
+cat .jamboree_source_ref
+cat .jamboree_source_commit
+venv/bin/python -c 'import jamboree.app; print("JAMBOREE_IMPORT=PASS")'
+```
 
-**500 from Flask when pairing**
+## Requirements
 
-* Check network path from the JAMboreeLite host to the Hopper IP, and that the Receiver ID (`stb`) is correct. Review logs printed in the Flask console (DEBUG enabled).
+- Python 3.11+
+- `flask`
+- `keyring`
+- `numpy`
+- `opencv-python-headless`
+- `paramiko`
+- `Pillow`
+- `pytesseract`
+- `pyserial`
+- `requests`
 
----
+The shared dependency manifest is `requirements_new.txt` and is consumed by both main installers.
 
-## Security & deployment
+## Security
 
-* This Flask app is intentionally lightweight and **has no auth**. Run it on a trusted host/network (VPN, lab VLAN, or behind a reverse proxy with auth).
-* The installers can register an autostart (Windows Task Scheduler / Linux autostart). You can also run it as a service if desired.
+JAMboreeLite is intended for a trusted lab network. The Flask service itself does not provide user authentication.
 
----
+Do not expose port 5003 directly to an untrusted network. Use appropriate network isolation or an authenticated reverse proxy when needed.
 
-## Developer notes
+## Repository/versioning policy
 
-* Package code lives under `jamboree/`. Entrypoints:
+Keep one repository:
 
-  * `jamboree/app.py` (Flask server)
-  * `jamboree/serial_bridge.py` (DART / serial)
-  * `jamboree/sgs_bridge.py`, `jamboree/sgs_lib.py` (HTTP/HTTPS)
-  * `jamboree/stb_store.py` (JSON persistence to `base.txt`)
-* Python version is pinned to **3.11+** (`pyproject.toml`).
-* You can also run from source without the installer:
+```text
+https://github.com/askjake/JAMboreeLite
+```
 
-  ```bash
-  git clone https://github.com/askjake/JAMboreeLite.git
-  cd JAMboreeLite/jamboree
-  python -m venv ../venv && source ../venv/bin/activate
-  pip install -e .
-  python -m jamboree.app
-  ```
-
----
-
-## FAQ
-
-**Q: How do I unpair a remote via DART?**
-
-Use the convenience route: `GET /unpair/<alias>` (sends SAT 3s, then DVR+Guide 3s – releases).
-
-**Q: Can I store `base.txt` somewhere else?**
-
-Yes: set `JAMBOREE_BASE=/path/to/base.txt` before starting the app.
-
-**Q: What’s the difference between Quick‑DART and the legacy DART path?**
-
-Quick‑DART emits `down`/`up` edges (two GETs). The legacy path holds buttons for N ms via `GET /auto/<remote>/<alias>/<button>/<delay>`.
-
-**Q: Where are logs?**
-
-Console output (DEBUG). For Windows, check Task Scheduler history if you enabled autostart.
-
----
-
-## Credits
-
-* Core by Jake (askjake) with Sling‑specific refinements: **Joey → Hopper SGS routing**, pairing helpers, and Quick‑DART integration.
-* HTML remotes live under `jamboree/static/`.
+If this generation should be called “JAMboreeLite v2”, create a **tag/release in this repository** after acceptance rather than creating `JAMboreeLite_v2`. That keeps every lab host on the same upgrade path.
 
 Happy automating. Spread the JAM. 🧈🍞
