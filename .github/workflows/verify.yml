@@ -32,6 +32,7 @@ jobs:
         run: |
           bash -n install_jamboreeLite.sh
           bash -n install_jamboreeLite_debian.sh
+          bash -n update_jamboreeLite.sh
 
       - name: Verify installer dependency manifest
         shell: bash

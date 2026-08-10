@@ -1,43 +1,237 @@
-JAMboreeLite - Security Refactoring Setup Instructions
+JAMboreeLite - Install, Safe Upgrade, and Pairing Preservation
 ========================================================================
 
-QUICK START:
-1. Install keyring: run install_keyring.bat (Windows) or pip install keyring
-2. Verify: python migrate_credentials.py --verify
-3. Migrate: python migrate_credentials.py
-4. Test: python -m jamboree.app
+RECOMMENDATION
+------------------------------------------------------------------------
+Keep one JAMboreeLite repository. Do not create a separate JAMboreeLite_v2
+repository just to distribute this generation of the software. Use branches,
+tags/releases, and the updater so every installation stays on one upgrade path.
 
-WHAT CHANGED:
-- Credentials now stored in OS keyring (Windows Credential Manager, etc.)
-- Fallback to base.txt for backward compatibility
-- New core/ module for security features
-- Migration script for safe transition
+The current installers are install-or-upgrade tools. Existing runtime state is
+preserved during an upgrade.
 
-DETAILED STEPS:
+WHAT A SAFE UPGRADE PRESERVES
+------------------------------------------------------------------------
+1. base.txt is preserved and is never replaced by the source sync.
+2. The existing Python venv is preserved when it is already Python 3.11+.
+3. A pre-update backup of the existing application/config tree is created.
+4. Secure SGS pairing credentials are outside the mirrored source tree:
+   - Windows: OS keyring when available.
+   - Windows fallback: machine-scoped DPAPI, normally at
+       %LOCALAPPDATA%\JAMboreeLite\sgs_credentials.dpapi.json
+   - Linux/Raspberry Pi: the configured OS keyring / Secret Service backend.
+5. The installed source ref and exact commit are recorded in:
+       .jamboree_source_ref
+       .jamboree_source_commit
 
-Step 1: Install Keyring
-  Windows: Double-click install_keyring.bat
-  Linux/Mac: pip install keyring==24.2.0
+Plaintext lname/passwd fields in legacy base.txt files are compatibility data,
+not the preferred credential backend. They are not required for a normal secure
+upgrade and base.txt is still preserved if they exist.
 
-Step 2: Verify What Will Be Migrated
-  python migrate_credentials.py --verify
+========================================================================
+EXISTING WINDOWS INSTALL - RECOMMENDED SAFE UPGRADE
+========================================================================
 
-Step 3: Migrate Credentials
-  Safe mode (keeps plaintext): python migrate_credentials.py
-  Full mode (removes plaintext): python migrate_credentials.py --remove-plaintext
+Default install location:
+    %USERPROFILE%\Documents\JAMboreeLite
 
-Step 4: Verify Migration
-  Check for base.txt.backup file
-  Look for "Successfully migrated" message
-  Test: python -c "from jamboree.core.credentials import CredentialManager; print(CredentialManager.get_credentials('Hopper-01'))"
+PowerShell:
 
-Step 5: Run Application
-  python -m jamboree.app
-  Check logs for "Retrieved credentials from keyring"
+    $ROOT = "$env:USERPROFILE\Documents\JAMboreeLite"
+    Set-Location $ROOT
+    $env:JAMBOREE_NO_PAUSE = '1'
+    & "$ROOT\update_jamboreeLite.cmd"
 
-TROUBLESHOOTING:
-- If keyring fails, app falls back to base.txt automatically
-- Restore from base.txt.backup if needed
-- All .backup files can be used for rollback
+By default this installs the latest main branch.
 
-See CHANGES.md for complete list of modifications.
+To install a specific branch or tag instead:
+
+    $ROOT = "$env:USERPROFILE\Documents\JAMboreeLite"
+    Set-Location $ROOT
+    $env:JAMBOREE_REF = 'YOUR_BRANCH_OR_TAG'
+    $env:JAMBOREE_NO_PAUSE = '1'
+    & "$ROOT\update_jamboreeLite.cmd"
+
+For a non-default installation directory:
+
+    $env:JAMBOREE_INSTALL_DIR = 'D:\path\to\JAMboreeLite'
+    $env:JAMBOREE_NO_PAUSE = '1'
+    & "$env:JAMBOREE_INSTALL_DIR\update_jamboreeLite.cmd"
+
+Verify the deployed source after upgrading:
+
+    Get-Content "$ROOT\.jamboree_source_ref"
+    Get-Content "$ROOT\.jamboree_source_commit"
+    & "$ROOT\venv\Scripts\python.exe" -c "import jamboree.app; print('JAMBOREE_IMPORT=PASS')"
+
+If JAMboreeLite was running during the update, restart the application so the
+new Python source is loaded. The updater intentionally does not kill arbitrary
+running processes for you.
+
+========================================================================
+EXISTING LINUX / RASPBERRY PI INSTALL - RECOMMENDED SAFE UPGRADE
+========================================================================
+
+Run the dedicated updater from the installed JAMboreeLite directory.
+
+Typical Raspberry Pi install:
+
+    cd "$HOME/JAMboreeLite"
+    JAMBOREE_REF=main bash ./update_jamboreeLite.sh
+
+Typical Linux install under Documents:
+
+    cd "$HOME/Documents/JAMboreeLite"
+    JAMBOREE_REF=main bash ./update_jamboreeLite.sh
+
+The updater defaults JAMBOREE_INSTALL_DIR to the directory containing
+update_jamboreeLite.sh, so it cannot accidentally switch between
+~/JAMboreeLite and ~/Documents/JAMboreeLite merely because a different installer
+wrapper was used originally.
+
+To update a custom install location:
+
+    JAMBOREE_INSTALL_DIR='/path/to/JAMboreeLite' \
+    JAMBOREE_REF=main \
+    bash '/path/to/JAMboreeLite/update_jamboreeLite.sh'
+
+Verify:
+
+    cd '/path/to/JAMboreeLite'
+    cat .jamboree_source_ref
+    cat .jamboree_source_commit
+    venv/bin/python -c 'import jamboree.app; print("JAMBOREE_IMPORT=PASS")'
+
+If using a headless Linux/SSH Secret Service session, launch JAMboreeLite in the
+same D-Bus/keyring session used to unlock the keyring. The updater does not
+remove or rewrite the OS keyring.
+
+========================================================================
+LEGACY INSTALL THAT DOES NOT HAVE AN UPDATER YET
+========================================================================
+
+Windows bootstrap upgrade
+------------------------------------------------------------------------
+Use a temporary clean clone and point the installer at the existing install.
+This preserves the existing base.txt and venv and creates a pre-update backup.
+
+PowerShell:
+
+    $INSTALL = "$env:USERPROFILE\Documents\JAMboreeLite"
+    $SRC = Join-Path $env:TEMP 'JAMboreeLite-upgrade-bootstrap'
+    Remove-Item $SRC -Recurse -Force -ErrorAction SilentlyContinue
+    git clone --depth 1 --branch main https://github.com/askjake/JAMboreeLite.git $SRC
+    $env:JAMBOREE_INSTALL_DIR = $INSTALL
+    $env:JAMBOREE_NO_PAUSE = '1'
+    cmd.exe /d /c "`"$SRC\install_jamboreeLite.cmd`""
+    Remove-Item $SRC -Recurse -Force -ErrorAction SilentlyContinue
+
+Linux / Raspberry Pi bootstrap upgrade
+------------------------------------------------------------------------
+Set INSTALL to the existing runtime directory.
+
+    INSTALL="$HOME/JAMboreeLite"
+    SRC="$(mktemp -d -t jamboreelite-bootstrap.XXXXXX)"
+    git clone --depth 1 --branch main https://github.com/askjake/JAMboreeLite.git "$SRC/source"
+    JAMBOREE_INSTALL_DIR="$INSTALL" JAMBOREE_REF=main \
+      bash "$SRC/source/install_jamboreeLite.sh"
+    rm -rf "$SRC"
+
+========================================================================
+FRESH WINDOWS INSTALL
+========================================================================
+
+A fresh install needs Python 3.11+ and Git for Windows. From a downloaded or
+cloned JAMboreeLite source tree, run:
+
+    install_jamboreeLite.cmd
+
+The default target is:
+
+    %USERPROFILE%\Documents\JAMboreeLite
+
+After installation:
+
+    cd /d "%USERPROFILE%\Documents\JAMboreeLite"
+    venv\Scripts\python.exe -m jamboree.app
+
+Web UI:
+    http://localhost:5003/
+    http://localhost:5003/settops
+
+========================================================================
+FRESH DEBIAN / RASPBERRY PI INSTALL
+========================================================================
+
+Recommended bootstrap:
+
+    set -Eeuo pipefail
+    sudo apt-get update
+    sudo apt-get install -y git python3 python3-venv python3-pip rsync
+
+    cd "$HOME"
+    git clone https://github.com/askjake/JAMboreeLite.git JAMboreeLite-bootstrap
+    cd JAMboreeLite-bootstrap
+    export JAMBOREE_REF=main
+    export JAMBOREE_INSTALL_DIR="$HOME/JAMboreeLite"
+    bash ./install_jamboreeLite_debian.sh
+
+Verify:
+
+    cd "$HOME/JAMboreeLite"
+    cat .jamboree_source_ref
+    cat .jamboree_source_commit
+    venv/bin/python -c 'import jamboree.app; print("JAMBOREE_IMPORT=PASS")'
+
+For headless SGS pairing on Linux, install/configure a Secret Service backend
+such as gnome-keyring and make sure JAMboreeLite runs in the unlocked D-Bus
+session. Normal SGS/DART operation does not require Tesseract; OCR-based IP/PIN
+recovery does.
+
+========================================================================
+PAIRING BEHAVIOR
+========================================================================
+
+Pair the host Hopper through /settops. Joey/HopperPlus-style child receivers use
+the host Hopper's SGS pairing and child-specific attach/CID routing.
+
+On Windows, Credential Manager is preferred when the logon session supports it.
+If it does not, JAMboreeLite securely falls back to machine-scoped DPAPI and
+verifies readback before reporting the pairing as stored.
+
+A normal source upgrade does not require re-pairing because neither the OS
+keyring nor the DPAPI credential file is part of the application source mirror.
+
+Safe credential status check (does not return the password):
+
+    curl http://127.0.0.1:5003/sgs/credentials/status?alias=YOUR_ALIAS
+
+Look for:
+    "paired": true
+    "password_present": true
+    "username_present": true
+
+========================================================================
+BACKUPS AND ROLLBACK
+========================================================================
+
+Windows update backups:
+    %LOCALAPPDATA%\JAMboreeLite\update-backups\
+
+Linux update backups:
+    ${XDG_DATA_HOME:-$HOME/.local/share}/JAMboreeLite/update-backups/
+
+The updater records the exact deployed Git ref/commit so a known-good source can
+be reinstalled by setting JAMBOREE_REF to that branch/tag/commit and running the
+same updater again.
+
+========================================================================
+IMPORTANT
+========================================================================
+
+- Do not delete base.txt before upgrading.
+- Do not delete the secure credential/keyring store before upgrading.
+- Do not create a separate JAMboreeLite_v2 repository just for deployment.
+- Use a tag/release in this repository if a named v2 milestone is desired.
+- Test /api/health and one SGS command after an upgrade before returning a lab
+  host to automation service.
