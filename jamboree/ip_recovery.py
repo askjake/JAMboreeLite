@@ -1032,13 +1032,15 @@ def note_sgs_failure(alias: str, exc: Optional[BaseException]) -> FailureClass:
 
 
 def note_sgs_success(alias: str) -> None:
+    """Record a healthy SGS command without blocking the response path.
+
+    MAC/identity discovery can probe multiple receiver endpoints and is reserved
+    for recovery. A successful remote key must return as soon as SGS confirms it.
+    """
     state = _state(alias)
     with _state_lock:
         state.consecutive_failures = 0
         state.last_failure = {}
-    mac = _configured_mac(alias)
-    if mac:
-        state.known_mac = mac
 
 
 def get_recovery_status(alias: Optional[str] = None) -> Dict[str, Any]:
