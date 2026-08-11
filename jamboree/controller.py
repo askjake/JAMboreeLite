@@ -205,14 +205,19 @@ class Controller:
 
         try:
             response = self._send_sgs_entry(stb_name, entry, button, duration)
-            ip_recovery.note_sgs_success(stb_name)
+            # Failures are tracked against the actual SGS receiver (host Hopper
+            # for a Joey), so successes must clear that same state.
+            ip_recovery.note_sgs_success(target_alias)
             return {"ok": True, "via": "sgs", "stdout": response, "ts": _ts()}
         except Exception as first_exc:
             first_text = str(first_exc)
             verdict = classify_sgs_failure(first_exc)
-            if not forced:
+            if not forced and not verdict.auth:
                 # Track failures against the receiver whose IP actually carried
                 # SGS. For a Joey this is its host Hopper, not the child alias.
+                # Auth failures bypass note_sgs_failure because its legacy
+                # threshold path may perform synchronous identity probing; the
+                # background recovery below diagnoses auth without blocking.
                 ip_recovery.note_sgs_failure(target_alias, first_exc)
             LOG.warning(
                 "SGS failed for %s target=%s ip=%s (%s): %s",
@@ -247,7 +252,7 @@ class Controller:
                         response = self._send_sgs_entry(
                             stb_name, refreshed, button, duration
                         )
-                        ip_recovery.note_sgs_success(stb_name)
+                        ip_recovery.note_sgs_success(active_target_alias)
                         return {
                             "ok": True,
                             "via": "sgs_reloaded",
@@ -301,8 +306,9 @@ class Controller:
         button_id: str,
         delay: int,
     ) -> Dict[str, Any]:
+        target_alias, _target = self._sgs_target(stb_name)
         response = send_sgs(stb_name, stb_ip, rxid, button_id, int(delay))
-        ip_recovery.note_sgs_success(stb_name)
+        ip_recovery.note_sgs_success(target_alias)
         return {"ok": True, "via": "sgs", "stdout": response, "ts": _ts()}
 
     def dart(self, stb_name: str, button_id: str, action: str) -> Dict[str, Any]:
