@@ -27,6 +27,7 @@ CERT_PEM = PACKAGE_DIR / "cert.pem"
 KEY_PEM = PACKAGE_DIR / "key.pem"
 CID_CACHE: Dict[Tuple[str, str], Tuple[int, float]] = {}
 CACHE_TTL_S = 150.0
+DEFAULT_REQUEST_TIMEOUT_S = 2.0
 
 
 def clear_cid_cache() -> None:
@@ -48,6 +49,27 @@ def _verify_setting() -> bool | str:
     }
 
 
+def _request_timeout_s() -> float:
+    """Return the per-endpoint timeout for normal remote-key traffic.
+
+    Three endpoints may be attempted serially. Keep the default total failure
+    budget below the automation client's 10-second request timeout while still
+    allowing an explicit environment override for unusual lab images.
+    """
+    raw = os.getenv("JAMBOREE_SGS_REQUEST_TIMEOUT_S", "").strip()
+    if not raw:
+        return DEFAULT_REQUEST_TIMEOUT_S
+    try:
+        return max(0.25, float(raw))
+    except ValueError:
+        LOG.warning(
+            "ignoring invalid JAMBOREE_SGS_REQUEST_TIMEOUT_S=%r; using %.1fs",
+            raw,
+            DEFAULT_REQUEST_TIMEOUT_S,
+        )
+        return DEFAULT_REQUEST_TIMEOUT_S
+
+
 def _credentials(alias: str) -> Optional[Tuple[str, str]]:
     username, password = CredentialManager.get_credentials(alias, store.document())
     return (username, password) if username and password else None
@@ -58,8 +80,9 @@ def _post(
     payload: dict,
     *,
     creds: Optional[Tuple[str, str]],
-    timeout: float = 7.0,
+    timeout: Optional[float] = None,
 ) -> dict:
+    request_timeout = _request_timeout_s() if timeout is None else max(0.05, float(timeout))
     attempts: list[tuple[str, bool]] = []
     if creds:
         attempts.append((f"https://{ip}/www/sgs", True))
@@ -76,7 +99,7 @@ def _post(
                 auth=HTTPDigestAuth(*creds) if creds else None,
                 verify=_verify_setting() if secure else True,
                 cert=_cert() if secure else None,
-                timeout=timeout,
+                timeout=request_timeout,
             )
         except Exception as exc:
             errors.append(f"{url}: {exc}")

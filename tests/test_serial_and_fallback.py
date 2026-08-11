@@ -27,6 +27,7 @@ def test_sgs_failure_falls_back_to_configured_rf(monkeypatch):
         controller,
         "classify_sgs_failure",
         lambda exc: types.SimpleNamespace(
+            dead=True,
             recoverable=False,
             auth=False,
             wrong_device=False,

@@ -5,6 +5,7 @@ import atexit
 import logging
 import os
 import socket
+import time
 from collections.abc import Mapping
 
 from flask import Flask, current_app, jsonify, request, send_from_directory
@@ -21,6 +22,7 @@ from .stb_store import store
 
 setup_logging(logging.DEBUG if os.getenv("JAMBOREE_DEBUG") == "1" else logging.INFO)
 LOG = logging.getLogger(__name__)
+_START_MONOTONIC = time.monotonic()
 
 app = Flask(__name__, static_folder=str(STATIC_DIR))
 app.register_blueprint(bp_sgs)
@@ -115,7 +117,10 @@ def health():
     return jsonify(
         ok=True,
         hostname=socket.gethostname(),
+        pid=os.getpid(),
+        uptime_s=round(max(0.0, time.monotonic() - _START_MONOTONIC), 3),
         stbs=len(store.all()),
+        config=store.status(),
         frame=frame_provider.status(),
         background_autopair=str(os.getenv("JAMBOREE_AUTOPAIR", "1")).lower()
         not in {"0", "false", "no", "off"},

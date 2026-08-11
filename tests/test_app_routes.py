@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 import pytest
 
 flask = pytest.importorskip("flask")
@@ -31,6 +33,21 @@ def test_save_stb_list_replaces_visible_rows_but_preserves_hidden_fields(monkeyp
     assert entry["lname"] == "legacy-user"
     assert entry["passwd"] == "legacy-pass"
     assert entry["remote"] == "1"
+
+
+def test_health_exposes_process_and_config_continuity_metadata():
+    client = app_module.app.test_client()
+    response = client.get("/api/health")
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["ok"] is True
+    assert data["pid"] == os.getpid()
+    assert isinstance(data["uptime_s"], (int, float))
+    assert data["uptime_s"] >= 0
+    assert data["config"]["exists"] is True
+    assert data["config"]["stbs"] == data["stbs"]
+    assert data["config"]["generation"] >= 1
+    assert data["config"]["external_reloads"] >= 0
 
 
 def test_recovery_status_route_exists():
