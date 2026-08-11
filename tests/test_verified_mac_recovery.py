@@ -140,6 +140,44 @@ def test_find_by_mac_recovers_unidentified_receiver_when_mac_is_persisted(monkey
     ) == "192.168.1.67"
 
 
+def test_find_by_mac_ignores_same_mac_outside_candidate_scope(monkeypatch):
+    """A link-local duplicate for the same device must not make /24 recovery ambiguous."""
+    store = FakeStore(
+        {
+            "H": {
+                "ip": "192.168.1.250",
+                "stb": "R1956395067-79",
+                "mac": "88:b6:ee:de:58:cc",
+            }
+        }
+    )
+    candidates = ["192.168.1.67", "192.168.1.90"]
+    monkeypatch.setattr(ip_recovery, "_store", store)
+    monkeypatch.setattr(ip_recovery, "_touch_host", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        ip_recovery,
+        "_arp_entries",
+        lambda: {
+            "169.254.95.189": "88:b6:ee:de:58:cc",
+            "192.168.1.67": "88:b6:ee:de:58:cc",
+            "192.168.1.90": "00:11:22:33:44:55",
+        },
+    )
+    monkeypatch.setattr(
+        ip_recovery,
+        "probe_device_identity",
+        lambda ip, _rid: {
+            "is_stb": True,
+            "rxids": [],
+            "rxid_match": False,
+            "reason": "sgs_response",
+            "ip": ip,
+        },
+    )
+
+    assert ip_recovery.find_by_mac("H", candidates=candidates, workers=2) == "192.168.1.67"
+
+
 def test_send_sgs_schedules_verified_mac_learning_for_hopper(monkeypatch):
     store = FakeStore(
         {
