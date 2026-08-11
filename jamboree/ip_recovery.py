@@ -509,12 +509,22 @@ def find_by_mac(
     if not mac:
         return None
     hosts = list(candidates) if candidates is not None else _candidate_hosts(alias)
+    host_set = set(hosts)
     with ThreadPoolExecutor(max_workers=max(1, min(int(workers), 96))) as pool:
         list(pool.map(_touch_host, hosts))
-    matches = sorted(ip for ip, value in _arp_entries().items() if value == mac)
+    # The same physical device can legitimately appear more than once in the OS
+    # ARP table (for example, one RFC1918 address plus an APIPA/link-local alias).
+    # Recovery is scoped to the candidate hosts we deliberately scanned, so an
+    # out-of-scope duplicate must not make an otherwise unique candidate
+    # ambiguous. Multiple in-scope matches remain a hard failure.
+    matches = sorted(
+        ip
+        for ip, value in _arp_entries().items()
+        if value == mac and ip in host_set
+    )
     if len(matches) != 1:
         if len(matches) > 1:
-            LOG.error("MAC %s resolved ambiguously: %s", mac, matches)
+            LOG.error("MAC %s resolved ambiguously within candidate scope: %s", mac, matches)
         return None
     candidate = matches[0]
     identity = probe_device_identity(candidate, str(_entry(alias).get("stb") or ""))

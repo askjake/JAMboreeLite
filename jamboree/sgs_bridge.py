@@ -16,6 +16,7 @@ from typing import Dict, Optional, Tuple
 import requests
 from requests.auth import HTTPDigestAuth
 
+from . import mac_learning
 from .commands import get_sgs_codes
 from .core.credentials import CredentialManager
 from .sgs_lib import sgs_get_receiver_id
@@ -234,4 +235,9 @@ def send_sgs(
             key_name,
             cid,
         )
-    return json.dumps(_post(target_ip, payload, creds=_credentials(target_alias)), sort_keys=True)
+    data = _post(target_ip, payload, creds=_credentials(target_alias))
+    # A result=1 is the strongest cheap evidence available that this resolved
+    # target alias really was reached at target_ip.  Learn its ARP MAC only after
+    # that success, in a daemon worker, so healthy keypress latency is unchanged.
+    mac_learning.learn_verified_mac_async(target_alias, target_ip)
+    return json.dumps(data, sort_keys=True)
