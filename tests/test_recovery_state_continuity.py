@@ -81,6 +81,26 @@ def _hopper_entries():
     }
 
 
+def _joey_entries():
+    return {
+        "H": {
+            "ip": "10.0.0.1",
+            "stb": "R1234567890-12",
+            "protocol": "SGS",
+            "remote": "1",
+            "role": "hopper",
+        },
+        "J": {
+            "ip": "10.0.0.9",
+            "stb": "R1111111111-11",
+            "protocol": "SGS",
+            "remote": "2",
+            "role": "joey",
+            "host": "H",
+        },
+    }
+
+
 def test_failed_sgs_reloads_external_ip_and_retries_before_recovery(monkeypatch):
     store = FakeStore(_hopper_entries(), refresh_ip="10.0.0.44")
     monkeypatch.setattr(controller_module, "store", store)
@@ -143,25 +163,7 @@ def test_transport_failure_starts_background_recovery_not_sync_scan(monkeypatch)
 
 
 def test_joey_transport_failure_recovers_host_hopper(monkeypatch):
-    store = FakeStore(
-        {
-            "H": {
-                "ip": "10.0.0.1",
-                "stb": "R1234567890-12",
-                "protocol": "SGS",
-                "remote": "1",
-                "role": "hopper",
-            },
-            "J": {
-                "ip": "10.0.0.9",
-                "stb": "R1111111111-11",
-                "protocol": "SGS",
-                "remote": "2",
-                "role": "joey",
-                "host": "H",
-            },
-        }
-    )
+    store = FakeStore(_joey_entries())
     monkeypatch.setattr(controller_module, "store", store)
     monkeypatch.setattr(
         controller_module,
@@ -186,6 +188,51 @@ def test_joey_transport_failure_recovers_host_hopper(monkeypatch):
         ctl.handle_auto_remote("2", "J", "guide", 120, allow_rf_fallback=False)
 
     assert started == ["H"]
+
+
+def test_joey_success_clears_host_hopper_failure_state(monkeypatch):
+    store = FakeStore(_joey_entries())
+    monkeypatch.setattr(controller_module, "store", store)
+    monkeypatch.setattr(controller_module, "send_sgs", lambda *_a, **_k: '{"result": 1}')
+    successes: list[str] = []
+    monkeypatch.setattr(
+        ip_recovery,
+        "note_sgs_success",
+        lambda alias: successes.append(alias),
+    )
+
+    result = controller_module.Controller().handle_auto_remote("2", "J", "guide", 120)
+
+    assert result["via"] == "sgs"
+    assert successes == ["H"]
+
+
+def test_auth_failure_diagnosis_stays_out_of_synchronous_notifier(monkeypatch):
+    store = FakeStore(_hopper_entries())
+    monkeypatch.setattr(controller_module, "store", store)
+    monkeypatch.setattr(
+        controller_module,
+        "send_sgs",
+        lambda *_a, **_k: (_ for _ in ()).throw(PermissionError("HTTP 403")),
+    )
+
+    def forbidden_notifier(*_args, **_kwargs):
+        raise AssertionError("auth failure notifier may probe receiver identity synchronously")
+
+    monkeypatch.setattr(ip_recovery, "note_sgs_failure", forbidden_notifier)
+    started: list[str] = []
+    monkeypatch.setattr(
+        ip_recovery,
+        "recover_alias_async",
+        lambda alias, **_kwargs: started.append(alias) or True,
+    )
+    monkeypatch.setattr(controller_module, "send_rf_strict", lambda *_a, **_k: "1 83 03 120")
+
+    result = controller_module.Controller().handle_auto_remote("1", "A", "guide", 120)
+
+    assert result["via"] == "rf_fallback"
+    assert result["recovery"]["alias"] == "A"
+    assert started == ["A"]
 
 
 def test_sgs_dead_endpoint_budget_stays_below_automation_timeout(monkeypatch):
