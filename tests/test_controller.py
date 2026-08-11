@@ -55,7 +55,11 @@ def test_force_sgs_is_strict_and_does_not_recover_or_fallback(monkeypatch):
     setup_store(monkeypatch)
     recovered = []
     rf = []
-    monkeypatch.setattr(controller_module, "send_sgs", lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("connection refused")))
+    monkeypatch.setattr(
+        controller_module,
+        "send_sgs",
+        lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("connection refused")),
+    )
     monkeypatch.setattr(controller_module, "send_rf_strict", lambda *_a, **_k: rf.append(1))
     ctl = controller_module.Controller(recoverer=lambda alias: recovered.append(alias))
     with pytest.raises(RuntimeError, match="connection refused"):
@@ -64,49 +68,61 @@ def test_force_sgs_is_strict_and_does_not_recover_or_fallback(monkeypatch):
     assert rf == []
 
 
-def test_transport_failure_recovers_then_retries_sgs(monkeypatch):
-    store = setup_store(monkeypatch)
-    calls = []
-
-    def send(*_args, **_kwargs):
-        calls.append(store.get("A")["ip"])
-        if len(calls) == 1:
-            raise RuntimeError("connection refused")
-        return '{"result":1}'
-
-    monkeypatch.setattr(controller_module, "send_sgs", send)
-    monkeypatch.setattr(ip_recovery, "note_sgs_failure", lambda *_a: None)
-    monkeypatch.setattr(ip_recovery, "note_sgs_success", lambda *_a: None)
-
-    def recover(alias):
-        store.entries[alias]["ip"] = "10.0.0.44"
-        return ip_recovery.RecoveryResult(
-            True, alias, "10.0.0.1", "10.0.0.44", "sgs_identity", sgs_verified=True
-        )
-
-    ctl = controller_module.Controller(recoverer=recover)
-    result = ctl.handle_auto_remote("1", "A", "guide", 120)
-    assert result["via"] == "sgs_recovered"
-    assert calls == ["10.0.0.1", "10.0.0.44"]
-
-
-def test_auth_failure_at_real_receiver_autopairs_and_uses_rf(monkeypatch):
+def test_transport_failure_schedules_background_recovery(monkeypatch):
     setup_store(monkeypatch)
-    monkeypatch.setattr(controller_module, "send_sgs", lambda *_a, **_k: (_ for _ in ()).throw(PermissionError("HTTP 403")))
-    monkeypatch.setattr(controller_module, "send_rf_strict", lambda *_a, **_k: "1 83 03 120")
+    monkeypatch.setattr(
+        controller_module,
+        "send_sgs",
+        lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("connection refused")),
+    )
     monkeypatch.setattr(ip_recovery, "note_sgs_failure", lambda *_a: None)
+    started = []
     monkeypatch.setattr(
         ip_recovery,
-        "verify_stored_ip_identity",
-        lambda _a: {"is_stb": True, "rxids": ["123456789012"], "rxid_match": True},
+        "recover_alias_async",
+        lambda alias, **_kwargs: started.append(alias) or True,
     )
-    paired = []
-    monkeypatch.setattr(ip_recovery, "trigger_autopair", lambda a, r: paired.append(a) or True)
+
+    ctl = controller_module.Controller(
+        recoverer=lambda _alias: (_ for _ in ()).throw(
+            AssertionError("normal /auto traffic must not run synchronous recovery")
+        )
+    )
+    with pytest.raises(RuntimeError, match="connection refused"):
+        ctl.handle_auto_remote(
+            "1", "A", "guide", 120, allow_rf_fallback=False
+        )
+
+    assert started == ["A"]
+
+
+def test_auth_failure_uses_rf_and_schedules_background_diagnosis(monkeypatch):
+    setup_store(monkeypatch)
+    monkeypatch.setattr(
+        controller_module,
+        "send_sgs",
+        lambda *_a, **_k: (_ for _ in ()).throw(PermissionError("HTTP 403")),
+    )
+    monkeypatch.setattr(controller_module, "send_rf_strict", lambda *_a, **_k: "1 83 03 120")
+    monkeypatch.setattr(ip_recovery, "note_sgs_failure", lambda *_a: None)
+    started = []
+    monkeypatch.setattr(
+        ip_recovery,
+        "recover_alias_async",
+        lambda alias, **_kwargs: started.append(alias) or True,
+    )
+
     ctl = controller_module.Controller()
     result = ctl.handle_auto_remote("1", "A", "guide", 120)
+
     assert result["via"] == "rf_fallback"
     assert "403" in result["sgs_error"]
-    assert paired == ["A"]
+    assert result["recovery"] == {
+        "alias": "A",
+        "started": True,
+        "mode": "background",
+    }
+    assert started == ["A"]
 
 
 def test_invalid_protocol_fails_closed(monkeypatch):
