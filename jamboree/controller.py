@@ -211,11 +211,9 @@ class Controller:
             first_text = str(first_exc)
             verdict = classify_sgs_failure(first_exc)
             if not forced:
-                ip_recovery.note_sgs_failure(
-                    stb_name,
-                    first_exc,
-                    recovery_alias=target_alias,
-                )
+                # Track failures against the receiver whose IP actually carried
+                # SGS. For a Joey this is its host Hopper, not the child alias.
+                ip_recovery.note_sgs_failure(target_alias, first_exc)
             LOG.warning(
                 "SGS failed for %s target=%s ip=%s (%s): %s",
                 stb_name,
