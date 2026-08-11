@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 
-from jamboree import controller as controller_module
-from jamboree import ip_recovery
+from jamboree import ip_recovery, mac_learning, sgs_bridge
 
 
 class FakeStore:
@@ -37,12 +36,6 @@ def test_learn_verified_mac_persists_arp_identity_without_network_probe(monkeypa
             }
         }
     )
-    monkeypatch.setattr(ip_recovery, "_store", store)
-    monkeypatch.setattr(
-        ip_recovery,
-        "_arp_entries",
-        lambda: {"192.168.1.67": "88:b6:ee:de:58:cc"},
-    )
     monkeypatch.setattr(
         ip_recovery,
         "probe_device_identity",
@@ -51,7 +44,12 @@ def test_learn_verified_mac_persists_arp_identity_without_network_probe(monkeypa
         ),
     )
 
-    result = ip_recovery.learn_verified_mac("H", "192.168.1.67")
+    result = mac_learning.learn_verified_mac(
+        "H",
+        "192.168.1.67",
+        store_obj=store,
+        arp_reader=lambda: {"192.168.1.67": "88:b6:ee:de:58:cc"},
+    )
 
     assert result["learned"] is True
     assert result["mac"] == "88:b6:ee:de:58:cc"
@@ -59,7 +57,7 @@ def test_learn_verified_mac_persists_arp_identity_without_network_probe(monkeypa
     assert ip_recovery._state("H").known_mac == "88:b6:ee:de:58:cc"
 
 
-def test_learn_verified_mac_refuses_to_overwrite_existing_different_mac(monkeypatch):
+def test_learn_verified_mac_refuses_to_overwrite_existing_different_mac():
     store = FakeStore(
         {
             "H": {
@@ -69,14 +67,13 @@ def test_learn_verified_mac_refuses_to_overwrite_existing_different_mac(monkeypa
             }
         }
     )
-    monkeypatch.setattr(ip_recovery, "_store", store)
-    monkeypatch.setattr(
-        ip_recovery,
-        "_arp_entries",
-        lambda: {"192.168.1.67": "88:b6:ee:de:58:cc"},
-    )
 
-    result = ip_recovery.learn_verified_mac("H", "192.168.1.67")
+    result = mac_learning.learn_verified_mac(
+        "H",
+        "192.168.1.67",
+        store_obj=store,
+        arp_reader=lambda: {"192.168.1.67": "88:b6:ee:de:58:cc"},
+    )
 
     assert result["learned"] is False
     assert result["reason"] == "existing_mac_mismatch"
@@ -84,7 +81,7 @@ def test_learn_verified_mac_refuses_to_overwrite_existing_different_mac(monkeypa
     assert store.updates == []
 
 
-def test_learn_verified_mac_skips_if_config_ip_changed_after_sgs(monkeypatch):
+def test_learn_verified_mac_skips_if_config_ip_changed_after_sgs():
     store = FakeStore(
         {
             "H": {
@@ -93,14 +90,13 @@ def test_learn_verified_mac_skips_if_config_ip_changed_after_sgs(monkeypatch):
             }
         }
     )
-    monkeypatch.setattr(ip_recovery, "_store", store)
-    monkeypatch.setattr(
-        ip_recovery,
-        "_arp_entries",
-        lambda: {"192.168.1.67": "88:b6:ee:de:58:cc"},
-    )
 
-    result = ip_recovery.learn_verified_mac("H", "192.168.1.67")
+    result = mac_learning.learn_verified_mac(
+        "H",
+        "192.168.1.67",
+        store_obj=store,
+        arp_reader=lambda: {"192.168.1.67": "88:b6:ee:de:58:cc"},
+    )
 
     assert result["learned"] is False
     assert result["reason"] == "configured_ip_changed"
@@ -144,7 +140,7 @@ def test_find_by_mac_recovers_unidentified_receiver_when_mac_is_persisted(monkey
     ) == "192.168.1.67"
 
 
-def test_controller_schedules_mac_learning_after_verified_hopper_sgs(monkeypatch):
+def test_send_sgs_schedules_verified_mac_learning_for_hopper(monkeypatch):
     store = FakeStore(
         {
             "H": {
@@ -156,26 +152,24 @@ def test_controller_schedules_mac_learning_after_verified_hopper_sgs(monkeypatch
             }
         }
     )
-    monkeypatch.setattr(controller_module, "store", store)
-    monkeypatch.setattr(controller_module, "send_sgs", lambda *_a, **_k: '{"result": 1}')
-    monkeypatch.setattr(ip_recovery, "note_sgs_success", lambda *_a, **_k: None)
+    monkeypatch.setattr(sgs_bridge, "store", store)
+    monkeypatch.setattr(sgs_bridge, "get_sgs_codes", lambda *_a, **_k: "guide")
+    monkeypatch.setattr(sgs_bridge, "_credentials", lambda _alias: ("u", "p"))
+    monkeypatch.setattr(sgs_bridge, "_post", lambda *_a, **_k: {"result": 1})
     learned = []
     monkeypatch.setattr(
-        ip_recovery,
+        sgs_bridge.mac_learning,
         "learn_verified_mac_async",
         lambda alias, ip: learned.append((alias, ip)) or True,
-        raising=False,
     )
 
-    result = controller_module.Controller().handle_auto_remote(
-        "8", "H", "Guide", 240, allow_rf_fallback=False
-    )
+    result = sgs_bridge.send_sgs("H", "192.168.1.67", "R1956395067-79", "Guide", 240)
 
-    assert result["via"] == "sgs"
+    assert '"result": 1' in result
     assert learned == [("H", "192.168.1.67")]
 
 
-def test_controller_learns_host_mac_after_verified_joey_sgs(monkeypatch):
+def test_send_sgs_learns_host_mac_for_joey(monkeypatch):
     store = FakeStore(
         {
             "H": {
@@ -195,20 +189,19 @@ def test_controller_learns_host_mac_after_verified_joey_sgs(monkeypatch):
             },
         }
     )
-    monkeypatch.setattr(controller_module, "store", store)
-    monkeypatch.setattr(controller_module, "send_sgs", lambda *_a, **_k: '{"result": 1}')
-    monkeypatch.setattr(ip_recovery, "note_sgs_success", lambda *_a, **_k: None)
+    monkeypatch.setattr(sgs_bridge, "store", store)
+    monkeypatch.setattr(sgs_bridge, "get_sgs_codes", lambda *_a, **_k: "guide")
+    monkeypatch.setattr(sgs_bridge, "_credentials", lambda _alias: ("u", "p"))
+    monkeypatch.setattr(sgs_bridge, "get_or_attach_cid", lambda *_a, **_k: 1234)
+    monkeypatch.setattr(sgs_bridge, "_post", lambda *_a, **_k: {"result": 1})
     learned = []
     monkeypatch.setattr(
-        ip_recovery,
+        sgs_bridge.mac_learning,
         "learn_verified_mac_async",
         lambda alias, ip: learned.append((alias, ip)) or True,
-        raising=False,
     )
 
-    result = controller_module.Controller().handle_auto_remote(
-        "9", "J", "Guide", 240, allow_rf_fallback=False
-    )
+    result = sgs_bridge.send_sgs("J", "192.168.1.99", "R1111111111-11", "Guide", 240)
 
-    assert result["via"] == "sgs"
+    assert '"result": 1' in result
     assert learned == [("H", "192.168.1.67")]
