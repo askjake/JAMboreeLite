@@ -273,8 +273,17 @@ class STBStore:
         self, alias: str, fields: Mapping[str, Any], *, create: bool = True
     ) -> Dict[str, Any]:
         with _lock:
+            requested = str(alias or "").strip()
+            if not requested:
+                raise ValueError("alias is required")
+            # Reuse an existing configured key even when a caller uses a casing
+            # variant. This prevents background recovery, pairing, or MAC-learning
+            # writers from recreating duplicate logical STBs after request-side
+            # canonicalization has resolved the alias.
+            canonical = self.resolve_alias(requested)
+            target_alias = canonical or requested
             document = base_io.update_stb_fields(
-                self.path, alias, fields, create=create
+                self.path, target_alias, fields, create=create
             )
             self._record_local_write_locked(document)
             return copy.deepcopy(self._data)
