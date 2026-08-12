@@ -105,6 +105,54 @@ class STBStore:
             self._refresh_if_changed_locked()
             return self._data.get("stbs", {})
 
+    @staticmethod
+    def _validate_alias_table(stbs: Mapping[str, Any]) -> None:
+        """Reject aliases that become ambiguous under case-insensitive clients."""
+        seen: Dict[str, str] = {}
+        for raw_alias in stbs:
+            alias = str(raw_alias).strip()
+            if not alias:
+                raise ValueError("STB aliases may not be blank")
+            folded = alias.casefold()
+            prior = seen.get(folded)
+            if prior is not None and prior != alias:
+                raise ValueError(
+                    "case-insensitive alias collision: "
+                    f"{prior!r} conflicts with {alias!r}"
+                )
+            seen[folded] = alias
+
+    def resolve_alias(self, name: str) -> Optional[str]:
+        """Resolve one request spelling to the unique configured alias.
+
+        Automation and historical clients are inconsistent about alias casing
+        (for example ``HOPPER3-Prod`` versus ``HOPPER3-PROD``). Keep one
+        canonical key in ``base.txt`` and accept a unique case-insensitive
+        spelling at runtime. If the configuration itself contains two keys that
+        differ only by case, fail closed instead of selecting the wrong receiver,
+        credential record, or DART mapping.
+        """
+        requested = str(name or "").strip()
+        if not requested:
+            return None
+        with _lock:
+            self._refresh_if_changed_locked()
+            stbs = self._data.get("stbs", {})
+            folded = requested.casefold()
+            matches = [
+                str(alias)
+                for alias in stbs
+                if str(alias).strip().casefold() == folded
+            ]
+            if not matches:
+                return None
+            if len(matches) != 1:
+                raise ValueError(
+                    "case-insensitive alias collision for "
+                    f"{requested!r}: {sorted(matches)!r}"
+                )
+            return matches[0]
+
     def _looks_like_child(self, name: str, entry: Mapping[str, Any]) -> bool:
         role = str(entry.get("role") or "").strip().lower()
         model = str(entry.get("model") or "")
@@ -225,8 +273,17 @@ class STBStore:
         self, alias: str, fields: Mapping[str, Any], *, create: bool = True
     ) -> Dict[str, Any]:
         with _lock:
+            requested = str(alias or "").strip()
+            if not requested:
+                raise ValueError("alias is required")
+            # Reuse an existing configured key even when a caller uses a casing
+            # variant. This prevents background recovery, pairing, or MAC-learning
+            # writers from recreating duplicate logical STBs after request-side
+            # canonicalization has resolved the alias.
+            canonical = self.resolve_alias(requested)
+            target_alias = canonical or requested
             document = base_io.update_stb_fields(
-                self.path, alias, fields, create=create
+                self.path, target_alias, fields, create=create
             )
             self._record_local_write_locked(document)
             return copy.deepcopy(self._data)
@@ -238,6 +295,7 @@ class STBStore:
         allow_delete: bool = True,
     ) -> Dict[str, Any]:
         with _lock:
+            self._validate_alias_table(stbs)
             document = base_io.replace_stb_table(
                 self.path, stbs, allow_delete=allow_delete
             )
