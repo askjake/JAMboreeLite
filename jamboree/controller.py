@@ -53,7 +53,13 @@ class Controller:
             raise ValueError("STB alias is required")
         resolver = getattr(store, "resolve_alias", None)
         if callable(resolver):
+            # A real case-collision raises here and must remain a hard failure.
+            # If there is simply no backing-table match, preserve compatibility
+            # with older tests/integrations that inject an exact ``store.get``
+            # result without replacing the global STBStore object.
             canonical = resolver(requested)
+            if not canonical and store.get(requested):
+                canonical = requested
         else:
             # Compatibility with simple test/integration stores that predate the
             # canonical resolver. Exact matching remains their contract.
