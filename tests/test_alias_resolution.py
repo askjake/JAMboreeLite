@@ -70,6 +70,27 @@ def test_replace_stbs_rejects_case_collision(tmp_path):
         )
 
 
+def test_update_stb_uses_existing_canonical_alias_instead_of_creating_case_variant(tmp_path):
+    path = tmp_path / "base.txt"
+    _write_base(
+        path,
+        {
+            "HOPPER3-PROD": {
+                "ip": "192.168.1.67",
+                "stb": "R1956395067-79",
+                "protocol": "SGS",
+            }
+        },
+    )
+    store = STBStore(path)
+
+    store.update_stb("HOPPER3-Prod", {"mac": "88:b6:ee:de:58:cc"})
+
+    document = store.document()
+    assert set(document["stbs"]) == {"HOPPER3-PROD"}
+    assert document["stbs"]["HOPPER3-PROD"]["mac"] == "88:b6:ee:de:58:cc"
+
+
 class _ControllerStore:
     def __init__(self):
         self.entries = {
