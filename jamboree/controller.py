@@ -47,23 +47,46 @@ class Controller:
         LOG.info("Controller initialized with %d STB(s)", len(store.all()))
 
     @staticmethod
-    def _entry(alias: str) -> Dict[str, Any]:
-        entry = store.get(alias)
+    def _canonical_alias(alias: str) -> str:
+        requested = str(alias or "").strip()
+        if not requested:
+            raise ValueError("STB alias is required")
+        resolver = getattr(store, "resolve_alias", None)
+        if callable(resolver):
+            canonical = resolver(requested)
+        else:
+            # Compatibility with simple test/integration stores that predate the
+            # canonical resolver. Exact matching remains their contract.
+            canonical = requested if store.get(requested) else None
+        if not canonical:
+            raise ValueError(f"STB {requested!r} not found")
+        return str(canonical)
+
+    @classmethod
+    def _entry(cls, alias: str) -> Dict[str, Any]:
+        canonical = cls._canonical_alias(alias)
+        entry = store.get(canonical)
         if not entry:
-            raise ValueError(f"STB {alias!r} not found")
+            raise ValueError(f"STB {canonical!r} not found")
         return entry
 
     @classmethod
     def _sgs_target(cls, alias: str) -> tuple[str, Dict[str, Any]]:
-        """Return the Hopper/config entry whose IP actually receives SGS."""
-        entry = cls._entry(alias)
+        """Return the canonical Hopper/config entry whose IP receives SGS."""
+        canonical = cls._canonical_alias(alias)
+        entry = cls._entry(canonical)
         role = str(entry.get("role", "hopper")).lower()
         if role == "joey" or entry.get("master_stb"):
-            host_alias = str(entry.get("host") or entry.get("master_stb") or "").strip()
-            host = store.get(host_alias) if host_alias else None
-            if host_alias and host and host.get("ip"):
-                return host_alias, host
-        return alias, entry
+            raw_host_alias = str(entry.get("host") or entry.get("master_stb") or "").strip()
+            if raw_host_alias:
+                try:
+                    host_alias = cls._canonical_alias(raw_host_alias)
+                except ValueError:
+                    host_alias = ""
+                host = store.get(host_alias) if host_alias else None
+                if host_alias and host and host.get("ip"):
+                    return host_alias, host
+        return canonical, entry
 
     @staticmethod
     def _refresh_store(*, force: bool = False) -> bool:
@@ -94,12 +117,14 @@ class Controller:
         )
 
     def rf_ready(self, alias: str) -> bool:
-        self._entry(alias)
-        return rf_available(alias, require_ready=True)
+        canonical = self._canonical_alias(alias)
+        self._entry(canonical)
+        return rf_available(canonical, require_ready=True)
 
     def rf_remote(self, alias: str, button: str, delay_ms: int) -> Dict[str, Any]:
-        entry = self._entry(alias)
-        line = send_rf_strict(alias, entry.get("remote"), button, int(delay_ms))
+        canonical = self._canonical_alias(alias)
+        entry = self._entry(canonical)
+        line = send_rf_strict(canonical, entry.get("remote"), button, int(delay_ms))
         return {
             "ok": True,
             "via": "rf",
@@ -125,13 +150,18 @@ class Controller:
         return result
 
     def transports(self, alias: str) -> Dict[str, Any]:
-        entry = self._entry(alias)
+        canonical = self._canonical_alias(alias)
+        entry = self._entry(canonical)
         role = str(entry.get("role", "hopper")).lower()
-        host_alias = str(entry.get("host") or entry.get("master_stb") or alias)
+        raw_host_alias = str(entry.get("host") or entry.get("master_stb") or canonical)
+        try:
+            host_alias = self._canonical_alias(raw_host_alias)
+        except ValueError:
+            host_alias = canonical
         host = store.get(host_alias) or entry
         paired = CredentialManager.has_stored_credentials(host_alias, store.document())
         return {
-            "alias": alias,
+            "alias": canonical,
             "configured_protocol": str(entry.get("protocol") or "").upper(),
             "role": role,
             "host": host_alias,
@@ -141,7 +171,7 @@ class Controller:
                 "paired": paired,
             },
             "rf": {
-                **rf_status(alias),
+                **rf_status(canonical),
                 "remote": entry.get("remote"),
                 "com_port": entry.get("com_port"),
             },
@@ -158,6 +188,10 @@ class Controller:
         allow_rf_fallback: bool = True,
         recover_ip: bool = True,
     ) -> Dict[str, Any]:
+        # Canonicalize once at the request boundary. Every downstream identity
+        # (credentials, recovery state, topology and DART mapping) must use the
+        # configured alias rather than the client's capitalization variant.
+        stb_name = self._canonical_alias(stb_name)
         entry = self._entry(stb_name)
         forced = str(force or "").strip().upper()
         if forced == "DART":
@@ -306,12 +340,14 @@ class Controller:
         button_id: str,
         delay: int,
     ) -> Dict[str, Any]:
+        stb_name = self._canonical_alias(stb_name)
         target_alias, _target = self._sgs_target(stb_name)
         response = send_sgs(stb_name, stb_ip, rxid, button_id, int(delay))
         ip_recovery.note_sgs_success(target_alias)
         return {"ok": True, "via": "sgs", "stdout": response, "ts": _ts()}
 
     def dart(self, stb_name: str, button_id: str, action: str) -> Dict[str, Any]:
+        stb_name = self._canonical_alias(stb_name)
         entry = self._entry(stb_name)
         normalized = str(action or "").lower().strip()
         if normalized.isdigit():
@@ -329,6 +365,7 @@ class Controller:
         }
 
     def unpair(self, stb_name: str) -> Dict[str, Any]:
+        stb_name = self._canonical_alias(stb_name)
         try:
             self.dart(stb_name, "sat", "down")
             time.sleep(3.10)
