@@ -17,6 +17,16 @@ class _Store:
         return {"stbs": self.entries}
 
 
+def test_sling_playback_uses_discrete_pause_and_play_commands():
+    assert sgs_bridge._key_name_for_button("Pause", 240) == "Pause"
+    assert sgs_bridge._key_name_for_button("Play", 240) == "Play"
+    assert sgs_bridge._key_name_for_button("pauseplay", 240) == "Pause/Play"
+
+
+def test_unverified_diamond_behavior_is_not_overridden_by_playback_hotfix():
+    assert sgs_bridge._key_name_for_button("diamond", 240) == "PiP Toggle"
+
+
 def test_joey_attach_uses_child_rid_but_remote_key_uses_host_rid(monkeypatch):
     store = _Store(
         {
