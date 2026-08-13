@@ -77,11 +77,13 @@ def _credentials(alias: str) -> Optional[Tuple[str, str]]:
 
 
 def _key_name_for_button(button_id: str, delay_ms: int) -> Optional[str]:
-    """Preserve Sling's physical-button contract when sending over SGS."""
+    """Preserve hardware-verified Sling playback semantics over SGS."""
     normalized = str(button_id or "").strip().lower()
-    if normalized in {"diamond", "d"}:
-        return "Record"
-    if normalized in {"play", "pause", "pauseplay"}:
+    if normalized == "pause":
+        return "Pause"
+    if normalized == "play":
+        return "Play"
+    if normalized == "pauseplay":
         return "Pause/Play"
     return get_sgs_codes(button_id, int(delay_ms))
 
