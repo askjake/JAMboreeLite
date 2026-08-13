@@ -77,8 +77,10 @@ def _credentials(alias: str) -> Optional[Tuple[str, str]]:
 
 
 def _key_name_for_button(button_id: str, delay_ms: int) -> Optional[str]:
-    """Preserve hardware-verified Sling playback semantics over SGS."""
+    """Preserve Sling's expected SGS button semantics."""
     normalized = str(button_id or "").strip().lower()
+    if normalized in {"diamond", "d"}:
+        return "Record"
     if normalized == "pause":
         return "Pause"
     if normalized == "play":
