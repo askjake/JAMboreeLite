@@ -1,4 +1,3 @@
-
 # --- jamboree/commands.py ---
 """Merged *commands.py* + *key_lookup.py* (no duplication).
 
@@ -34,7 +33,7 @@ def get_sgs_codes(button_id, delay):
     elif button_id == 'rwd':
         if delay >= 1000:
             button_id = 'Rewind'
-    
+
     # After resolving conditional changes, fetch the corresponding command
     button_number = button_id_to_number.get(button_id.lower())
     if button_number:
@@ -42,7 +41,7 @@ def get_sgs_codes(button_id, delay):
     else:
         return None
 
-    
+
 button_id_to_number = {
     'power': '1',
     'home': '2',
@@ -67,6 +66,7 @@ button_id_to_number = {
     'rew': '14',
     'rewind': '140',
     'play': '15',
+    'pause': '15',
     'pauseplay': '15',
     'skipfwd': '16',
     'skipf': '16',
@@ -126,7 +126,7 @@ button_id_to_number = {
     'pair': 'pair',
     'reset': '99',
     'allup': '86'
-    
+
 
 }
 
@@ -194,7 +194,7 @@ sgs_commands = {
     '13': 'Info',
     '14': 'Skip Back',  # Skip Back and Rewind are the same
     '140': 'Rewind',
-    '15': 'Play',
+    '15': 'Pause/Play',
     '16': 'Step Forward',  # Skip Forward and Fast Forward are the same
     '160': 'Fast Forward',
     '17': 'Volume Up',
@@ -213,7 +213,7 @@ sgs_commands = {
     '29': '7',
     '30': '8',
     '31': '9',
-    '32': 'PiP Toggle',  # Assume '*' is mapped to Diamond
+    '32': 'Record',  # Sling contract: configured diamond performs recording
     '34': 'PiP Toggle',  # Assume '#' is mapped to DDiamond
     '35': 'SAT',
     '36': 'TV',
@@ -227,6 +227,3 @@ sgs_commands = {
     '44': 'PiP Toggle'
 
 }
-
-
-
