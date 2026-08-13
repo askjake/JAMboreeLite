@@ -81,11 +81,7 @@ def _key_name_for_button(button_id: str, delay_ms: int) -> Optional[str]:
     normalized = str(button_id or "").strip().lower()
     if normalized in {"diamond", "d"}:
         return "Record"
-    if normalized == "pause":
-        return "Pause"
-    if normalized == "play":
-        return "Play"
-    if normalized == "pauseplay":
+    if normalized in {"pause", "play", "pauseplay", "playpause"}:
         return "Pause/Play"
     return get_sgs_codes(button_id, int(delay_ms))
 
