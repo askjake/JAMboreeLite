@@ -17,10 +17,9 @@ class _Store:
         return {"stbs": self.entries}
 
 
-def test_sling_playback_uses_discrete_pause_and_play_commands():
-    assert sgs_bridge._key_name_for_button("Pause", 240) == "Pause"
-    assert sgs_bridge._key_name_for_button("Play", 240) == "Play"
-    assert sgs_bridge._key_name_for_button("pauseplay", 240) == "Pause/Play"
+def test_sling_play_pause_aliases_use_same_toggle_command():
+    for button in ("Pause", "Play", "pauseplay", "playpause"):
+        assert sgs_bridge._key_name_for_button(button, 240) == "Pause/Play"
 
 
 def test_sling_diamond_uses_sgs_record_contract():
