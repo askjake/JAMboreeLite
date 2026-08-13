@@ -76,6 +76,16 @@ def _credentials(alias: str) -> Optional[Tuple[str, str]]:
     return (username, password) if username and password else None
 
 
+def _key_name_for_button(button_id: str, delay_ms: int) -> Optional[str]:
+    """Preserve Sling's physical-button contract when sending over SGS."""
+    normalized = str(button_id or "").strip().lower()
+    if normalized in {"diamond", "d"}:
+        return "Record"
+    if normalized in {"play", "pause", "pauseplay"}:
+        return "Pause/Play"
+    return get_sgs_codes(button_id, int(delay_ms))
+
+
 def _post(
     ip: str,
     payload: dict,
@@ -192,7 +202,7 @@ def send_sgs(
     *,
     verbose: bool = False,
 ) -> str:
-    key_name = get_sgs_codes(button_id, int(delay_ms))
+    key_name = _key_name_for_button(button_id, int(delay_ms))
     if not key_name:
         raise ValueError(f"No SGS mapping for {button_id!r}")
 
