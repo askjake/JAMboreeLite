@@ -23,8 +23,9 @@ def test_sling_playback_uses_discrete_pause_and_play_commands():
     assert sgs_bridge._key_name_for_button("pauseplay", 240) == "Pause/Play"
 
 
-def test_unverified_diamond_behavior_is_not_overridden_by_playback_hotfix():
-    assert sgs_bridge._key_name_for_button("diamond", 240) == "PiP Toggle"
+def test_sling_diamond_uses_sgs_record_contract():
+    assert sgs_bridge._key_name_for_button("diamond", 240) == "Record"
+    assert sgs_bridge._key_name_for_button("d", 240) == "Record"
 
 
 def test_joey_attach_uses_child_rid_but_remote_key_uses_host_rid(monkeypatch):
